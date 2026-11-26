@@ -1,4 +1,4 @@
-# C10K with Python threads
+# C10K bench
 
 [`server.py`](server.py): one thread per connection, blocking sockets.
 
