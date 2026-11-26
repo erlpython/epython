@@ -27,7 +27,10 @@ sudo sysctl -w kernel.threads-max=4194304 kernel.pid_max=4194304 vm.max_map_coun
 ulimit -n 65536 && epython server.py 8000
 
 # terminal 2
-ulimit -n 65536 && wrk -t$(( $(getconf _NPROCESSORS_ONLN) / 4 )) -c10000 -d30s --latency http://127.0.0.1:8000
+ulimit -n 65536 && wrk -t$(( $(getconf _NPROCESSORS_ONLN) / 4 )) -c10000 -d30s --latency http://127.0.0.1:8000/hold
+
+
+ulimit -n 65536 && wrk -t$(( $(getconf _NPROCESSORS_ONLN) / 4 )) -c10000 -d30s --latency http://127.0.0.1:8000/ping
 ```
 
 `Socket errors: connect 0` means all 10,000 connections were open.
