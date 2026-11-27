@@ -32,525 +32,6 @@ epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 
 ---
 
-## Django Benchmark
-
-[`django_server.py`](django_server.py) (`Django 6.1.3`, `wrk -t8 -c200 -d30s --latency` over loopback; see [Test Machine](#test-machine)). All four interpreters ran on `waitress 3.0.2` (`1w × 16t`, no `os.fork()`), with CPython `gunicorn 27.0.1` (`1w × 16t` and `16w` prefork) as reference baselines.
-
-Django's template/middleware layer is CPU-bound pure-Python OOP rather than network I/O: CPython `gunicorn 16w` prefork leads (`15,480` `/template/`, `31,933` `/json/`), and CPython FT leads `1w × 16t` (`1,461` / `9,814`). On `/json/`, `EPython` reaches **2,495 req/s** with `0` errors (ahead of threaded CPython GIL `2,141` / `1,527`); on `/template/` it reaches **277 req/s**.
-
-<table>
-<tr>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "Django /template/ — Waitress 16t (Req/s)"
-    x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
-    y-axis "Req/s" 0 --> 1800
-    bar [277, 1461, 517, 322]
-```
-
-</td>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "Django /json/ — Waitress 16t (Req/s)"
-    x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
-    y-axis "Req/s" 0 --> 11000
-    bar [2495, 9814, 2141, 2614]
-```
-
-</td>
-</tr>
-</table>
-
-<details>
-<summary><strong>View Django numbers &amp; reproduce commands</strong></summary>
-
-#### `GET /template/` (`wrk -t8 -c200 -d30s --latency`)
-
-| Runtime / Server | Req/s | Avg | p50 | p99 | Steady CPU/req (`cores`) | Memory (`PSS` / `RSS`) | Errors |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.18 GIL (gunicorn 16w prefork) | 15,480.1 | 12.85ms | 12.30ms | 28.29ms | 1,013.5 µs (`15.7c`) | 401 / 663 MiB (17p) | 0 |
-| CPython 3.13.6t FT (gunicorn 1w x 16t) | 1,542.0 | 129.41ms | 126.42ms | 169.05ms | 4,355.5 µs (`6.7c`) | 142 / 165 MiB (2p) | 0 |
-| CPython 3.13.6t FT (waitress 1w x 16t) | 1,461.3 | 66.93ms | 65.44ms | 91.26ms | 4,197.3 µs (`6.1c`) | 117 / 120 MiB (1p) | 0 |
-| CPython 3.13.18 GIL (gunicorn 1w x 16t) | 781.1 | 226.00ms | 244.00ms | 294.70ms | 1,478.6 µs (`1.2c`) | 47 / 68 MiB (2p) | 122 timeouts |
-| CPython 3.13.18 GIL (waitress 1w x 16t) | 517.1 | 184.72ms | 98.73ms | 521.20ms | 2,123.4 µs (`1.1c`) | 35 / 42 MiB (1p) | 27 timeouts |
-| RustPython 0.6.0 (waitress 1w x 16t) | 322.0 | 302.66ms | 301.47ms | 341.95ms | 14,700.5 µs (`4.7c`) | 197 / 200 MiB (1p) | 0 |
-| **EPython 0.1.0 (waitress 1w x 16t)** | **277.4** | **350.80ms** | **349.71ms** | **427.03ms** | **24,942.4 µs** (`6.9c`) | 941 / 988 MiB (4p) | 0 |
-
-#### `GET /json/` (`wrk -t8 -c200 -d30s --latency`)
-
-| Runtime / Server | Req/s | Avg | p50 | p99 | Steady CPU/req (`cores`) | Memory (`PSS` / `RSS`) | Errors |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.18 GIL (gunicorn 16w prefork) | 31,933.2 | 6.16ms | 5.89ms | 16.00ms | 467.1 µs (`14.9c`) | 402 / 663 MiB (17p) | 0 |
-| CPython 3.13.6t FT (waitress 1w x 16t) | 9,814.4 | 10.23ms | 9.00ms | 23.09ms | 1,027.8 µs (`10.1c`) | 117 / 120 MiB (1p) | 0 |
-| CPython 3.13.6t FT (gunicorn 1w x 16t) | 7,708.2 | 28.35ms | 25.33ms | 55.14ms | 1,556.0 µs (`12.0c`) | 141 / 164 MiB (2p) | 0 |
-| RustPython 0.6.0 (waitress 1w x 16t) | 2,614.4 | 40.62ms | 34.25ms | 80.89ms | 3,371.0 µs (`8.8c`) | 163 / 165 MiB (1p) | 0 |
-| **EPython 0.1.0 (waitress 1w x 16t)** | **2,495.0** | **43.09ms** | **35.63ms** | **129.01ms** | **3,396.0 µs** (`8.5c`) | 2,175 / 2,223 MiB (4p) | 0 |
-| CPython 3.13.18 GIL (waitress 1w x 16t) | 2,141.2 | 48.55ms | 40.83ms | 96.02ms | 550.7 µs (`1.2c`) | 35 / 42 MiB (1p) | 0 |
-| CPython 3.13.18 GIL (gunicorn 1w x 16t) | 1,527.0 | 129.03ms | 128.20ms | 222.85ms | 825.5 µs (`1.3c`) | 47 / 68 MiB (2p) | 89 timeouts |
-
-#### Reproduce
-
-```sh
-epython -m pip install django waitress
-epython -m waitress --host=127.0.0.1 --port=8000 --threads=16 django_server:application
-
-# CPython Gunicorn baselines (1w x 16t gthread / 16w prefork)
-python3.13t -m gunicorn django_server:application --workers 1 --threads 16 --worker-class gthread --bind 127.0.0.1:8000 --log-level warning
-python3 -m gunicorn django_server:application --workers 16 --bind 127.0.0.1:8000 --log-level warning
-
-# Warmup & measure (/template/ or /json/)
-wrk -t4 -c100 -d5s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d30s --latency http://127.0.0.1:8000/json/
-```
-
-</details>
-
----
-
-## C10K Multiprocess I/O Benchmark
-
-Unmodified [`multiprocess_server.py`](multiprocess_server.py) + [`post.lua`](post.lua) at **10,000 concurrent keep-alive connections (`wrk -c10000`)** with **zero CLI flags** (`selectors` + `SO_REUSEPORT` `multiprocessing.Process` workers parsing JSON, FNV-1a hashing, updating a per-worker 64-shard dict, and returning JSON).
-
-80 sequential 30s runs (`10–50` workers × `wrk -t16/-t24/-t32/-t64`, **0 errors**): `EPython 0.1.0` wins throughput in **17 / 20** configs (sweeping `-t32` and `-t64` 5/5) and CPU/req in **18 / 20** — peaking at **631,105 req/s** (`+4.7%` vs. CPython GIL, `+6.5%` vs. CPython FT, `2.64×` RustPython) and **587,823 req/s** at `-t64`, 50w (`+7.9%` vs. GIL, `15.7%` lower CPU/req).
-
-<details>
-<summary><strong>View summary table</strong></summary>
-
-| Interpreter | Peak Req/s | `wrk -t32`, 50w (`p50`) | `wrk -t64`, 50w (`p99`) | CPU/req (`t64`, 50w) | Memory (`t64`, 50w `PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **631,105** (`t32`, 50w) | **631,105** (`10.68ms`) | **587,823** (`75.36ms`) | **53.55 µs** | 2,343 / 2,367 MiB (2p) |
-| CPython 3.13.6t (FT) | 592,541 (`t32`, 50w) | 592,541 (`10.69ms`) | 544,376 (`63.96ms`) | 65.88 µs | 433 / 1,272 MiB (51p) |
-| CPython 3.13.18 (GIL) | 602,773 (`t32`, 50w) | 602,773 (`10.36ms`) | 544,844 (`63.96ms`) | 63.50 µs | 228 / 716 MiB (51p) |
-| RustPython 0.6.0 | 265,444 (`t16`, 50w) | 238,967 (`38.96ms`) | 241,131 (`84.25ms`) | 191.59 µs | 603 / 3,083 MiB (53p) |
-
-</details>
-
-<table>
-<tr>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "wrk -t16 — Throughput (Req/s)"
-    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 500000
-    line [243466, 456372, 437313, 398860, 344376]
-    line [213103, 378935, 420010, 409754, 397059]
-    line [220266, 399916, 436921, 412747, 394022]
-    line [78074, 140331, 187170, 222304, 265444]
-```
-
-</td>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "wrk -t24 — Throughput (Req/s)"
-    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 620000
-    line [218906, 415900, 581030, 510047, 511514]
-    line [201953, 357756, 476378, 524029, 488689]
-    line [209158, 356697, 491311, 517458, 496178]
-    line [76270, 137148, 177443, 204323, 228520]
-```
-
-</td>
-</tr>
-<tr>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "wrk -t32 — Throughput (Req/s)"
-    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 660000
-    line [212684, 368002, 536696, 609679, 631105]
-    line [196113, 277378, 469672, 543713, 592541]
-    line [193126, 338766, 487409, 574578, 602773]
-    line [75537, 130057, 177515, 219244, 238967]
-```
-
-</td>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "wrk -t64 — Throughput (Req/s)"
-    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 620000
-    line [207283, 376017, 537503, 577080, 587823]
-    line [193240, 324161, 467626, 530531, 544376]
-    line [191644, 329028, 476169, 545481, 544844]
-    line [77835, 131369, 169826, 213312, 241131]
-```
-
-</td>
-</tr>
-</table>
-
-**Legend:** 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
-
-<details>
-<summary><strong>View detailed numbers — wrk -t16 (10, 20, 30, 40, 50 server workers)</strong></summary>
-
-> **Note on `wrk -t16` at 30–50 workers:** Above ~`430–456k req/s`, `wrk -t16` pegs all 16 client threads (`15.5–16.0 / 16` cores), throttling throughput and inflating tail latency. Increasing `wrk` threads (`-t24`, `-t32`, `-t64`) removes client saturation and lets `EPython` scale to **`631,105 req/s`**.
-
-#### 10 server workers (`wrk -t16 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **243,466** | **41.40ms** | **38.37ms** | **73.26ms** | **327.90ms** | **20.96 / 22.19 / 43.15 µs** | 655 / 679 MiB (2p) |
-| CPython 3.13.18 (GIL) | 220,266 | 45.05ms | 41.92ms | 73.57ms | 145.59ms | 22.78 / 22.62 / 45.40 µs | 77 / 160 MiB (11p) |
-| CPython 3.13.6t (FT) | 213,103 | 46.59ms | 43.01ms | 78.63ms | 155.83ms | 25.05 / 21.86 / 46.91 µs | 103 / 268 MiB (11p) |
-| RustPython 0.6.0 | 78,074 | 127.01ms | 122.11ms | 173.21ms | 304.96ms | 98.17 / 29.89 / 128.06 µs | 260 / 785 MiB (13p) |
-
-#### 20 server workers (`wrk -t16 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **456,372** | **20.22ms** | **17.94ms** | **52.97ms** | **308.00ms** | **22.68 / 22.28 / 44.95 µs** | 621 / 645 MiB (2p) |
-| CPython 3.13.18 (GIL) | 399,916 | 24.32ms | 23.68ms | 53.43ms | 92.78ms | 27.62 / 22.06 / 49.68 µs | 100 / 299 MiB (21p) |
-| CPython 3.13.6t (FT) | 378,935 | 26.01ms | 25.13ms | 54.14ms | 110.15ms | 30.14 / 22.03 / 52.17 µs | 182 / 524 MiB (21p) |
-| RustPython 0.6.0 | 140,331 | 70.69ms | 69.40ms | 104.89ms | 205.58ms | 112.04 / 30.45 / 142.49 µs | 339 / 1,344 MiB (23p) |
-
-#### 30 server workers (`wrk -t16 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **437,313** | **24.12ms** | **10.16ms** | **255.69ms** | **528.12ms** | **27.36 / 25.53 / 52.89 µs** | 852 / 876 MiB (2p) |
-| CPython 3.13.18 (GIL) | 436,921 | 11.76ms | 11.44ms | 29.00ms | 76.88ms | 35.93 / 25.33 / 61.26 µs | 142 / 439 MiB (31p) |
-| CPython 3.13.6t (FT) | 420,010 | 12.61ms | 11.48ms | 31.50ms | 61.38ms | 38.92 / 24.77 / 63.69 µs | 270 / 769 MiB (31p) |
-| RustPython 0.6.0 | 187,170 | 52.91ms | 52.22ms | 82.88ms | 171.53ms | 127.77 / 31.75 / 159.52 µs | 439 / 1,938 MiB (33p) |
-
-#### 40 server workers (`wrk -t16 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.18 (GIL) | 412,747 | 12.16ms | 11.72ms | 27.37ms | 83.52ms | 40.87 / 27.67 / 68.54 µs | 183 / 577 MiB (41p) |
-| CPython 3.13.6t (FT) | 409,754 | 12.31ms | 11.75ms | 29.28ms | 77.41ms | 44.54 / 26.51 / 71.06 µs | 355 / 1,020 MiB (41p) |
-| **EPython 0.1.0** | **398,860** | **78.24ms** | **12.70ms** | **480.50ms** | **552.29ms** | **23.47 / 23.20 / 46.67 µs** | 1,024 / 1,048 MiB (2p) |
-| RustPython 0.6.0 | 222,304 | 44.21ms | 42.04ms | 89.61ms | 170.62ms | 135.53 / 33.78 / 169.31 µs | 527 / 2,490 MiB (43p) |
-
-#### 50 server workers (`wrk -t16 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.6t (FT) | 397,059 | 12.71ms | 12.06ms | 29.93ms | 62.87ms | 47.98 / 28.32 / 76.30 µs | 435 / 1,268 MiB (51p) |
-| CPython 3.13.18 (GIL) | 394,022 | 12.75ms | 12.29ms | 28.39ms | 62.85ms | 44.26 / 29.76 / 74.02 µs | 225 / 722 MiB (51p) |
-| **EPython 0.1.0** | **344,376** | **72.06ms** | **11.48ms** | **452.94ms** | **574.89ms** | **23.02 / 22.82 / 45.84 µs** | 1,150 / 1,174 MiB (2p) |
-| RustPython 0.6.0 | 265,444 | 35.46ms | 31.55ms | 83.20ms | 261.77ms | 142.01 / 33.68 / 175.69 µs | 628 / 3,089 MiB (53p) |
-
-</details>
-
-<details>
-<summary><strong>View detailed numbers — wrk -t24 (10, 20, 30, 40, 50 server workers)</strong></summary>
-
-#### 10 server workers (`wrk -t24 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **218,906** | **45.97ms** | **44.19ms** | **74.32ms** | **306.93ms** | **24.20 / 25.17 / 49.37 µs** | 640 / 665 MiB (2p) |
-| CPython 3.13.18 (GIL) | 209,158 | 47.56ms | 44.04ms | 75.82ms | 135.16ms | 23.88 / 23.91 / 47.79 µs | 77 / 160 MiB (11p) |
-| CPython 3.13.6t (FT) | 201,953 | 49.23ms | 46.04ms | 79.20ms | 139.10ms | 26.44 / 23.06 / 49.50 µs | 104 / 270 MiB (11p) |
-| RustPython 0.6.0 | 76,270 | 130.33ms | 126.54ms | 176.03ms | 310.70ms | 99.51 / 31.57 / 131.08 µs | 262 / 787 MiB (13p) |
-
-#### 20 server workers (`wrk -t24 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **415,900** | **25.22ms** | **23.37ms** | **55.46ms** | **369.44ms** | **23.99 / 24.80 / 48.79 µs** | 654 / 678 MiB (2p) |
-| CPython 3.13.6t (FT) | 357,756 | 27.76ms | 28.21ms | 52.12ms | 102.88ms | 31.97 / 23.92 / 55.89 µs | 184 / 526 MiB (21p) |
-| CPython 3.13.18 (GIL) | 356,697 | 27.82ms | 28.24ms | 51.94ms | 109.30ms | 31.26 / 24.79 / 56.05 µs | 100 / 299 MiB (21p) |
-| RustPython 0.6.0 | 137,148 | 72.46ms | 72.08ms | 102.25ms | 208.43ms | 114.28 / 31.46 / 145.74 µs | 338 / 1,340 MiB (23p) |
-
-#### 30 server workers (`wrk -t24 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **581,030** | **19.00ms** | **14.23ms** | **123.93ms** | **518.40ms** | **24.92 / 24.84 / 49.76 µs** | 847 / 871 MiB (2p) |
-| CPython 3.13.18 (GIL) | 491,311 | 19.74ms | 18.16ms | 45.39ms | 96.79ms | 32.08 / 24.26 / 56.34 µs | 142 / 439 MiB (31p) |
-| CPython 3.13.6t (FT) | 476,378 | 20.43ms | 18.89ms | 45.99ms | 91.02ms | 34.40 / 23.80 / 58.20 µs | 268 / 769 MiB (31p) |
-| RustPython 0.6.0 | 177,443 | 55.91ms | 54.69ms | 85.42ms | 189.50ms | 135.18 / 33.66 / 168.84 µs | 439 / 1,919 MiB (33p) |
-
-#### 40 server workers (`wrk -t24 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.6t (FT) | 524,029 | 12.15ms | 10.17ms | 35.62ms | 109.96ms | 41.03 / 26.11 / 67.14 µs | 354 / 1,022 MiB (41p) |
-| CPython 3.13.18 (GIL) | 517,458 | 11.43ms | 9.28ms | 33.50ms | 130.42ms | 36.58 / 25.97 / 62.55 µs | 186 / 579 MiB (41p) |
-| **EPython 0.1.0** | **510,047** | **58.68ms** | **13.44ms** | **484.77ms** | **550.89ms** | **25.96 / 24.83 / 50.79 µs** | 1,387 / 1,412 MiB (2p) |
-| RustPython 0.6.0 | 204,323 | 48.45ms | 46.34ms | 89.91ms | 261.05ms | 149.18 / 35.91 / 185.09 µs | 526 / 2,495 MiB (43p) |
-
-#### 50 server workers (`wrk -t24 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **511,514** | **79.70ms** | **11.49ms** | **496.82ms** | **559.28ms** | **24.71 / 24.10 / 48.81 µs** | 1,202 / 1,226 MiB (2p) |
-| CPython 3.13.18 (GIL) | 496,178 | 11.53ms | 9.23ms | 33.68ms | 89.00ms | 38.87 / 27.04 / 65.91 µs | 228 / 717 MiB (51p) |
-| CPython 3.13.6t (FT) | 488,689 | 11.94ms | 9.80ms | 35.09ms | 95.21ms | 41.85 / 25.69 / 67.53 µs | 435 / 1,270 MiB (51p) |
-| RustPython 0.6.0 | 228,520 | 43.00ms | 39.94ms | 95.28ms | 288.80ms | 152.12 / 36.07 / 188.20 µs | 623 / 3,052 MiB (53p) |
-
-</details>
-
-<details>
-<summary><strong>View detailed numbers — wrk -t32 (10, 20, 30, 40, 50 server workers)</strong></summary>
-
-#### 10 server workers (`wrk -t32 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **212,684** | **47.33ms** | **45.92ms** | **75.22ms** | **336.33ms** | **24.62 / 25.57 / 50.19 µs** | 680 / 704 MiB (2p) |
-| CPython 3.13.6t (FT) | 196,113 | 50.76ms | 49.33ms | 79.72ms | 156.68ms | 28.27 / 22.70 / 50.97 µs | 104 / 273 MiB (11p) |
-| CPython 3.13.18 (GIL) | 193,126 | 51.50ms | 50.74ms | 79.82ms | 138.67ms | 27.34 / 24.40 / 51.74 µs | 77 / 160 MiB (11p) |
-| RustPython 0.6.0 | 75,537 | 131.58ms | 129.39ms | 178.64ms | 387.24ms | 101.13 / 31.22 / 132.36 µs | 262 / 787 MiB (13p) |
-
-#### 20 server workers (`wrk -t32 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **368,002** | **28.29ms** | **25.68ms** | **59.84ms** | **375.43ms** | **27.61 / 27.87 / 55.49 µs** | 751 / 776 MiB (2p) |
-| CPython 3.13.18 (GIL) | 338,766 | 29.36ms | 29.12ms | 53.54ms | 102.71ms | 33.00 / 25.99 / 59.00 µs | 101 / 300 MiB (21p) |
-| CPython 3.13.6t (FT) | 277,378 | 35.96ms | 33.41ms | 66.87ms | 152.26ms | 42.84 / 29.21 / 72.05 µs | 183 / 524 MiB (21p) |
-| RustPython 0.6.0 | 130,057 | 76.46ms | 75.16ms | 106.57ms | 203.57ms | 121.16 / 32.55 / 153.70 µs | 334 / 1,344 MiB (23p) |
-
-#### 30 server workers (`wrk -t32 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **536,696** | **19.69ms** | **16.41ms** | **55.76ms** | **436.38ms** | **25.45 / 25.61 / 51.06 µs** | 933 / 957 MiB (2p) |
-| CPython 3.13.18 (GIL) | 487,409 | 20.23ms | 19.14ms | 43.07ms | 117.07ms | 34.33 / 25.43 / 59.76 µs | 143 / 441 MiB (31p) |
-| CPython 3.13.6t (FT) | 469,672 | 21.05ms | 20.11ms | 43.52ms | 101.04ms | 37.52 / 25.13 / 62.65 µs | 270 / 771 MiB (31p) |
-| RustPython 0.6.0 | 177,515 | 56.00ms | 54.67ms | 81.51ms | 164.93ms | 134.66 / 34.26 / 168.92 µs | 441 / 1,909 MiB (33p) |
-
-#### 40 server workers (`wrk -t32 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **609,679** | **17.28ms** | **13.56ms** | **71.47ms** | **488.57ms** | **26.38 / 25.67 / 52.05 µs** | 1,194 / 1,218 MiB (2p) |
-| CPython 3.13.18 (GIL) | 574,578 | 16.28ms | 14.28ms | 44.53ms | 243.53ms | 35.01 / 24.77 / 59.78 µs | 186 / 577 MiB (41p) |
-| CPython 3.13.6t (FT) | 543,713 | 17.26ms | 15.35ms | 46.83ms | 112.71ms | 38.14 / 24.94 / 63.08 µs | 353 / 1,022 MiB (41p) |
-| RustPython 0.6.0 | 219,244 | 45.27ms | 43.76ms | 77.72ms | 175.67ms | 142.81 / 36.42 / 179.23 µs | 524 / 2,496 MiB (43p) |
-
-#### 50 server workers (`wrk -t32 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **631,105** | **18.97ms** | **10.68ms** | **296.61ms** | **650.11ms** | **27.36 / 26.30 / 53.67 µs** | 2,302 / 2,326 MiB (2p) |
-| CPython 3.13.18 (GIL) | 602,773 | 13.94ms | 10.36ms | 50.61ms | 136.10ms | 35.63 / 25.68 / 61.31 µs | 229 / 719 MiB (51p) |
-| CPython 3.13.6t (FT) | 592,541 | 14.40ms | 10.69ms | 52.29ms | 242.00ms | 38.15 / 24.61 / 62.77 µs | 433 / 1,271 MiB (51p) |
-| RustPython 0.6.0 | 238,967 | 41.39ms | 38.96ms | 85.67ms | 257.57ms | 146.35 / 36.89 / 183.24 µs | 624 / 3,069 MiB (53p) |
-
-</details>
-
-<details>
-<summary><strong>View detailed numbers — wrk -t64 (10, 20, 30, 40, 50 server workers)</strong></summary>
-
-#### 10 server workers (`wrk -t64 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **207,283** | **48.69ms** | **46.56ms** | **74.61ms** | **387.04ms** | **25.28 / 26.79 / 52.07 µs** | 671 / 696 MiB (2p) |
-| CPython 3.13.6t (FT) | 193,240 | 51.66ms | 50.39ms | 78.13ms | 134.88ms | 27.84 / 23.87 / 51.71 µs | 105 / 270 MiB (11p) |
-| CPython 3.13.18 (GIL) | 191,644 | 52.08ms | 51.05ms | 77.63ms | 144.65ms | 27.02 / 25.14 / 52.16 µs | 77 / 159 MiB (11p) |
-| RustPython 0.6.0 | 77,835 | 128.18ms | 123.41ms | 181.60ms | 343.01ms | 99.14 / 29.32 / 128.46 µs | 262 / 788 MiB (13p) |
-
-#### 20 server workers (`wrk -t64 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **376,017** | **27.52ms** | **25.63ms** | **51.87ms** | **415.93ms** | **26.55 / 27.68 / 54.23 µs** | 673 / 697 MiB (2p) |
-| CPython 3.13.18 (GIL) | 329,028 | 30.34ms | 29.54ms | 54.01ms | 126.35ms | 33.41 / 27.33 / 60.75 µs | 101 / 299 MiB (21p) |
-| CPython 3.13.6t (FT) | 324,161 | 30.80ms | 29.89ms | 54.76ms | 105.21ms | 35.10 / 26.55 / 61.66 µs | 183 / 520 MiB (21p) |
-| RustPython 0.6.0 | 131,369 | 75.98ms | 73.93ms | 106.37ms | 220.50ms | 118.87 / 33.29 / 152.16 µs | 336 / 1,343 MiB (23p) |
-
-#### 30 server workers (`wrk -t64 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **537,503** | **20.21ms** | **17.10ms** | **57.37ms** | **506.72ms** | **26.33 / 27.48 / 53.80 µs** | 795 / 819 MiB (2p) |
-| CPython 3.13.18 (GIL) | 476,169 | 20.94ms | 20.13ms | 42.68ms | 110.81ms | 35.38 / 26.72 / 62.10 µs | 142 / 437 MiB (31p) |
-| CPython 3.13.6t (FT) | 467,626 | 21.36ms | 20.55ms | 45.06ms | 127.58ms | 37.53 / 25.89 / 63.42 µs | 266 / 768 MiB (31p) |
-| RustPython 0.6.0 | 169,826 | 58.77ms | 57.81ms | 89.68ms | 194.90ms | 140.70 / 35.80 / 176.50 µs | 431 / 1,902 MiB (33p) |
-
-#### 40 server workers (`wrk -t64 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **577,080** | **18.19ms** | **14.62ms** | **59.24ms** | **469.40ms** | **27.90 / 27.34 / 55.24 µs** | 1,882 / 1,906 MiB (2p) |
-| CPython 3.13.18 (GIL) | 545,481 | 18.35ms | 15.21ms | 56.15ms | 184.40ms | 36.12 / 26.49 / 62.61 µs | 184 / 579 MiB (41p) |
-| CPython 3.13.6t (FT) | 530,531 | 18.83ms | 15.73ms | 56.21ms | 182.50ms | 40.77 / 26.33 / 67.10 µs | 352 / 1,022 MiB (41p) |
-| RustPython 0.6.0 | 213,312 | 46.83ms | 45.46ms | 77.80ms | 193.07ms | 147.72 / 37.49 / 185.21 µs | 524 / 2,482 MiB (43p) |
-
-#### 50 server workers (`wrk -t64 -c10000 -d30s`)
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | **587,823** | **18.16ms** | **13.75ms** | **75.36ms** | **552.09ms** | **27.43 / 26.12 / 53.55 µs** | 2,343 / 2,367 MiB (2p) |
-| CPython 3.13.18 (GIL) | 544,844 | 18.25ms | 14.77ms | 63.96ms | 200.93ms | 37.20 / 26.29 / 63.50 µs | 228 / 716 MiB (51p) |
-| CPython 3.13.6t (FT) | 544,376 | 18.37ms | 14.95ms | 63.96ms | 188.88ms | 39.82 / 26.06 / 65.88 µs | 433 / 1,272 MiB (51p) |
-| RustPython 0.6.0 | 241,131 | 41.49ms | 38.40ms | 84.25ms | 270.73ms | 152.77 / 38.82 / 191.59 µs | 603 / 3,083 MiB (53p) |
-
-</details>
-
-### Reproduce
-
-```sh
-# terminal 1 — server ([port=8000] [num_workers=cpu_count])
-ulimit -n 65536 && epython multiprocess_server.py 8000 50
-
-# terminal 2 — load generator (no "Socket errors:" line = 0 errors across all 10k connections)
-ulimit -n 65536 && wrk -t32 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
-```
-
----
-
 ## C10K Multithreaded I/O Benchmark
 
 Unmodified [`threaded_server.py`](threaded_server.py) + [`post.lua`](post.lua) at **10,000 concurrent keep-alive connections (`wrk -c10000`)** (`selectors` + `SO_REUSEPORT` `threading.Thread` workers sharing a 64-shard `threading.Lock` dict).
@@ -959,6 +440,525 @@ ulimit -n 65536 && epython threaded_server.py 8000 50
 # terminal 2 — load generator (no "Socket errors:" line = 0 errors across all 10k connections)
 ulimit -n 65536 && wrk -t24 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
 ```
+
+---
+
+## C10K Multiprocess I/O Benchmark
+
+Unmodified [`multiprocess_server.py`](multiprocess_server.py) + [`post.lua`](post.lua) at **10,000 concurrent keep-alive connections (`wrk -c10000`)** with **zero CLI flags** (`selectors` + `SO_REUSEPORT` `multiprocessing.Process` workers parsing JSON, FNV-1a hashing, updating a per-worker 64-shard dict, and returning JSON).
+
+80 sequential 30s runs (`10–50` workers × `wrk -t16/-t24/-t32/-t64`, **0 errors**): `EPython 0.1.0` wins throughput in **17 / 20** configs (sweeping `-t32` and `-t64` 5/5) and CPU/req in **18 / 20** — peaking at **631,105 req/s** (`+4.7%` vs. CPython GIL, `+6.5%` vs. CPython FT, `2.64×` RustPython) and **587,823 req/s** at `-t64`, 50w (`+7.9%` vs. GIL, `15.7%` lower CPU/req).
+
+<details>
+<summary><strong>View summary table</strong></summary>
+
+| Interpreter | Peak Req/s | `wrk -t32`, 50w (`p50`) | `wrk -t64`, 50w (`p99`) | CPU/req (`t64`, 50w) | Memory (`t64`, 50w `PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **631,105** (`t32`, 50w) | **631,105** (`10.68ms`) | **587,823** (`75.36ms`) | **53.55 µs** | 2,343 / 2,367 MiB (2p) |
+| CPython 3.13.6t (FT) | 592,541 (`t32`, 50w) | 592,541 (`10.69ms`) | 544,376 (`63.96ms`) | 65.88 µs | 433 / 1,272 MiB (51p) |
+| CPython 3.13.18 (GIL) | 602,773 (`t32`, 50w) | 602,773 (`10.36ms`) | 544,844 (`63.96ms`) | 63.50 µs | 228 / 716 MiB (51p) |
+| RustPython 0.6.0 | 265,444 (`t16`, 50w) | 238,967 (`38.96ms`) | 241,131 (`84.25ms`) | 191.59 µs | 603 / 3,083 MiB (53p) |
+
+</details>
+
+<table>
+<tr>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "wrk -t16 — Throughput (Req/s)"
+    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 500000
+    line [243466, 456372, 437313, 398860, 344376]
+    line [213103, 378935, 420010, 409754, 397059]
+    line [220266, 399916, 436921, 412747, 394022]
+    line [78074, 140331, 187170, 222304, 265444]
+```
+
+</td>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "wrk -t24 — Throughput (Req/s)"
+    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 620000
+    line [218906, 415900, 581030, 510047, 511514]
+    line [201953, 357756, 476378, 524029, 488689]
+    line [209158, 356697, 491311, 517458, 496178]
+    line [76270, 137148, 177443, 204323, 228520]
+```
+
+</td>
+</tr>
+<tr>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "wrk -t32 — Throughput (Req/s)"
+    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 660000
+    line [212684, 368002, 536696, 609679, 631105]
+    line [196113, 277378, 469672, 543713, 592541]
+    line [193126, 338766, 487409, 574578, 602773]
+    line [75537, 130057, 177515, 219244, 238967]
+```
+
+</td>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "wrk -t64 — Throughput (Req/s)"
+    x-axis "Server Workers" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 620000
+    line [207283, 376017, 537503, 577080, 587823]
+    line [193240, 324161, 467626, 530531, 544376]
+    line [191644, 329028, 476169, 545481, 544844]
+    line [77835, 131369, 169826, 213312, 241131]
+```
+
+</td>
+</tr>
+</table>
+
+**Legend:** 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
+
+<details>
+<summary><strong>View detailed numbers — wrk -t16 (10, 20, 30, 40, 50 server workers)</strong></summary>
+
+> **Note on `wrk -t16` at 30–50 workers:** Above ~`430–456k req/s`, `wrk -t16` pegs all 16 client threads (`15.5–16.0 / 16` cores), throttling throughput and inflating tail latency. Increasing `wrk` threads (`-t24`, `-t32`, `-t64`) removes client saturation and lets `EPython` scale to **`631,105 req/s`**.
+
+#### 10 server workers (`wrk -t16 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **243,466** | **41.40ms** | **38.37ms** | **73.26ms** | **327.90ms** | **20.96 / 22.19 / 43.15 µs** | 655 / 679 MiB (2p) |
+| CPython 3.13.18 (GIL) | 220,266 | 45.05ms | 41.92ms | 73.57ms | 145.59ms | 22.78 / 22.62 / 45.40 µs | 77 / 160 MiB (11p) |
+| CPython 3.13.6t (FT) | 213,103 | 46.59ms | 43.01ms | 78.63ms | 155.83ms | 25.05 / 21.86 / 46.91 µs | 103 / 268 MiB (11p) |
+| RustPython 0.6.0 | 78,074 | 127.01ms | 122.11ms | 173.21ms | 304.96ms | 98.17 / 29.89 / 128.06 µs | 260 / 785 MiB (13p) |
+
+#### 20 server workers (`wrk -t16 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **456,372** | **20.22ms** | **17.94ms** | **52.97ms** | **308.00ms** | **22.68 / 22.28 / 44.95 µs** | 621 / 645 MiB (2p) |
+| CPython 3.13.18 (GIL) | 399,916 | 24.32ms | 23.68ms | 53.43ms | 92.78ms | 27.62 / 22.06 / 49.68 µs | 100 / 299 MiB (21p) |
+| CPython 3.13.6t (FT) | 378,935 | 26.01ms | 25.13ms | 54.14ms | 110.15ms | 30.14 / 22.03 / 52.17 µs | 182 / 524 MiB (21p) |
+| RustPython 0.6.0 | 140,331 | 70.69ms | 69.40ms | 104.89ms | 205.58ms | 112.04 / 30.45 / 142.49 µs | 339 / 1,344 MiB (23p) |
+
+#### 30 server workers (`wrk -t16 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **437,313** | **24.12ms** | **10.16ms** | **255.69ms** | **528.12ms** | **27.36 / 25.53 / 52.89 µs** | 852 / 876 MiB (2p) |
+| CPython 3.13.18 (GIL) | 436,921 | 11.76ms | 11.44ms | 29.00ms | 76.88ms | 35.93 / 25.33 / 61.26 µs | 142 / 439 MiB (31p) |
+| CPython 3.13.6t (FT) | 420,010 | 12.61ms | 11.48ms | 31.50ms | 61.38ms | 38.92 / 24.77 / 63.69 µs | 270 / 769 MiB (31p) |
+| RustPython 0.6.0 | 187,170 | 52.91ms | 52.22ms | 82.88ms | 171.53ms | 127.77 / 31.75 / 159.52 µs | 439 / 1,938 MiB (33p) |
+
+#### 40 server workers (`wrk -t16 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| CPython 3.13.18 (GIL) | 412,747 | 12.16ms | 11.72ms | 27.37ms | 83.52ms | 40.87 / 27.67 / 68.54 µs | 183 / 577 MiB (41p) |
+| CPython 3.13.6t (FT) | 409,754 | 12.31ms | 11.75ms | 29.28ms | 77.41ms | 44.54 / 26.51 / 71.06 µs | 355 / 1,020 MiB (41p) |
+| **EPython 0.1.0** | **398,860** | **78.24ms** | **12.70ms** | **480.50ms** | **552.29ms** | **23.47 / 23.20 / 46.67 µs** | 1,024 / 1,048 MiB (2p) |
+| RustPython 0.6.0 | 222,304 | 44.21ms | 42.04ms | 89.61ms | 170.62ms | 135.53 / 33.78 / 169.31 µs | 527 / 2,490 MiB (43p) |
+
+#### 50 server workers (`wrk -t16 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| CPython 3.13.6t (FT) | 397,059 | 12.71ms | 12.06ms | 29.93ms | 62.87ms | 47.98 / 28.32 / 76.30 µs | 435 / 1,268 MiB (51p) |
+| CPython 3.13.18 (GIL) | 394,022 | 12.75ms | 12.29ms | 28.39ms | 62.85ms | 44.26 / 29.76 / 74.02 µs | 225 / 722 MiB (51p) |
+| **EPython 0.1.0** | **344,376** | **72.06ms** | **11.48ms** | **452.94ms** | **574.89ms** | **23.02 / 22.82 / 45.84 µs** | 1,150 / 1,174 MiB (2p) |
+| RustPython 0.6.0 | 265,444 | 35.46ms | 31.55ms | 83.20ms | 261.77ms | 142.01 / 33.68 / 175.69 µs | 628 / 3,089 MiB (53p) |
+
+</details>
+
+<details>
+<summary><strong>View detailed numbers — wrk -t24 (10, 20, 30, 40, 50 server workers)</strong></summary>
+
+#### 10 server workers (`wrk -t24 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **218,906** | **45.97ms** | **44.19ms** | **74.32ms** | **306.93ms** | **24.20 / 25.17 / 49.37 µs** | 640 / 665 MiB (2p) |
+| CPython 3.13.18 (GIL) | 209,158 | 47.56ms | 44.04ms | 75.82ms | 135.16ms | 23.88 / 23.91 / 47.79 µs | 77 / 160 MiB (11p) |
+| CPython 3.13.6t (FT) | 201,953 | 49.23ms | 46.04ms | 79.20ms | 139.10ms | 26.44 / 23.06 / 49.50 µs | 104 / 270 MiB (11p) |
+| RustPython 0.6.0 | 76,270 | 130.33ms | 126.54ms | 176.03ms | 310.70ms | 99.51 / 31.57 / 131.08 µs | 262 / 787 MiB (13p) |
+
+#### 20 server workers (`wrk -t24 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **415,900** | **25.22ms** | **23.37ms** | **55.46ms** | **369.44ms** | **23.99 / 24.80 / 48.79 µs** | 654 / 678 MiB (2p) |
+| CPython 3.13.6t (FT) | 357,756 | 27.76ms | 28.21ms | 52.12ms | 102.88ms | 31.97 / 23.92 / 55.89 µs | 184 / 526 MiB (21p) |
+| CPython 3.13.18 (GIL) | 356,697 | 27.82ms | 28.24ms | 51.94ms | 109.30ms | 31.26 / 24.79 / 56.05 µs | 100 / 299 MiB (21p) |
+| RustPython 0.6.0 | 137,148 | 72.46ms | 72.08ms | 102.25ms | 208.43ms | 114.28 / 31.46 / 145.74 µs | 338 / 1,340 MiB (23p) |
+
+#### 30 server workers (`wrk -t24 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **581,030** | **19.00ms** | **14.23ms** | **123.93ms** | **518.40ms** | **24.92 / 24.84 / 49.76 µs** | 847 / 871 MiB (2p) |
+| CPython 3.13.18 (GIL) | 491,311 | 19.74ms | 18.16ms | 45.39ms | 96.79ms | 32.08 / 24.26 / 56.34 µs | 142 / 439 MiB (31p) |
+| CPython 3.13.6t (FT) | 476,378 | 20.43ms | 18.89ms | 45.99ms | 91.02ms | 34.40 / 23.80 / 58.20 µs | 268 / 769 MiB (31p) |
+| RustPython 0.6.0 | 177,443 | 55.91ms | 54.69ms | 85.42ms | 189.50ms | 135.18 / 33.66 / 168.84 µs | 439 / 1,919 MiB (33p) |
+
+#### 40 server workers (`wrk -t24 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| CPython 3.13.6t (FT) | 524,029 | 12.15ms | 10.17ms | 35.62ms | 109.96ms | 41.03 / 26.11 / 67.14 µs | 354 / 1,022 MiB (41p) |
+| CPython 3.13.18 (GIL) | 517,458 | 11.43ms | 9.28ms | 33.50ms | 130.42ms | 36.58 / 25.97 / 62.55 µs | 186 / 579 MiB (41p) |
+| **EPython 0.1.0** | **510,047** | **58.68ms** | **13.44ms** | **484.77ms** | **550.89ms** | **25.96 / 24.83 / 50.79 µs** | 1,387 / 1,412 MiB (2p) |
+| RustPython 0.6.0 | 204,323 | 48.45ms | 46.34ms | 89.91ms | 261.05ms | 149.18 / 35.91 / 185.09 µs | 526 / 2,495 MiB (43p) |
+
+#### 50 server workers (`wrk -t24 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **511,514** | **79.70ms** | **11.49ms** | **496.82ms** | **559.28ms** | **24.71 / 24.10 / 48.81 µs** | 1,202 / 1,226 MiB (2p) |
+| CPython 3.13.18 (GIL) | 496,178 | 11.53ms | 9.23ms | 33.68ms | 89.00ms | 38.87 / 27.04 / 65.91 µs | 228 / 717 MiB (51p) |
+| CPython 3.13.6t (FT) | 488,689 | 11.94ms | 9.80ms | 35.09ms | 95.21ms | 41.85 / 25.69 / 67.53 µs | 435 / 1,270 MiB (51p) |
+| RustPython 0.6.0 | 228,520 | 43.00ms | 39.94ms | 95.28ms | 288.80ms | 152.12 / 36.07 / 188.20 µs | 623 / 3,052 MiB (53p) |
+
+</details>
+
+<details>
+<summary><strong>View detailed numbers — wrk -t32 (10, 20, 30, 40, 50 server workers)</strong></summary>
+
+#### 10 server workers (`wrk -t32 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **212,684** | **47.33ms** | **45.92ms** | **75.22ms** | **336.33ms** | **24.62 / 25.57 / 50.19 µs** | 680 / 704 MiB (2p) |
+| CPython 3.13.6t (FT) | 196,113 | 50.76ms | 49.33ms | 79.72ms | 156.68ms | 28.27 / 22.70 / 50.97 µs | 104 / 273 MiB (11p) |
+| CPython 3.13.18 (GIL) | 193,126 | 51.50ms | 50.74ms | 79.82ms | 138.67ms | 27.34 / 24.40 / 51.74 µs | 77 / 160 MiB (11p) |
+| RustPython 0.6.0 | 75,537 | 131.58ms | 129.39ms | 178.64ms | 387.24ms | 101.13 / 31.22 / 132.36 µs | 262 / 787 MiB (13p) |
+
+#### 20 server workers (`wrk -t32 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **368,002** | **28.29ms** | **25.68ms** | **59.84ms** | **375.43ms** | **27.61 / 27.87 / 55.49 µs** | 751 / 776 MiB (2p) |
+| CPython 3.13.18 (GIL) | 338,766 | 29.36ms | 29.12ms | 53.54ms | 102.71ms | 33.00 / 25.99 / 59.00 µs | 101 / 300 MiB (21p) |
+| CPython 3.13.6t (FT) | 277,378 | 35.96ms | 33.41ms | 66.87ms | 152.26ms | 42.84 / 29.21 / 72.05 µs | 183 / 524 MiB (21p) |
+| RustPython 0.6.0 | 130,057 | 76.46ms | 75.16ms | 106.57ms | 203.57ms | 121.16 / 32.55 / 153.70 µs | 334 / 1,344 MiB (23p) |
+
+#### 30 server workers (`wrk -t32 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **536,696** | **19.69ms** | **16.41ms** | **55.76ms** | **436.38ms** | **25.45 / 25.61 / 51.06 µs** | 933 / 957 MiB (2p) |
+| CPython 3.13.18 (GIL) | 487,409 | 20.23ms | 19.14ms | 43.07ms | 117.07ms | 34.33 / 25.43 / 59.76 µs | 143 / 441 MiB (31p) |
+| CPython 3.13.6t (FT) | 469,672 | 21.05ms | 20.11ms | 43.52ms | 101.04ms | 37.52 / 25.13 / 62.65 µs | 270 / 771 MiB (31p) |
+| RustPython 0.6.0 | 177,515 | 56.00ms | 54.67ms | 81.51ms | 164.93ms | 134.66 / 34.26 / 168.92 µs | 441 / 1,909 MiB (33p) |
+
+#### 40 server workers (`wrk -t32 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **609,679** | **17.28ms** | **13.56ms** | **71.47ms** | **488.57ms** | **26.38 / 25.67 / 52.05 µs** | 1,194 / 1,218 MiB (2p) |
+| CPython 3.13.18 (GIL) | 574,578 | 16.28ms | 14.28ms | 44.53ms | 243.53ms | 35.01 / 24.77 / 59.78 µs | 186 / 577 MiB (41p) |
+| CPython 3.13.6t (FT) | 543,713 | 17.26ms | 15.35ms | 46.83ms | 112.71ms | 38.14 / 24.94 / 63.08 µs | 353 / 1,022 MiB (41p) |
+| RustPython 0.6.0 | 219,244 | 45.27ms | 43.76ms | 77.72ms | 175.67ms | 142.81 / 36.42 / 179.23 µs | 524 / 2,496 MiB (43p) |
+
+#### 50 server workers (`wrk -t32 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **631,105** | **18.97ms** | **10.68ms** | **296.61ms** | **650.11ms** | **27.36 / 26.30 / 53.67 µs** | 2,302 / 2,326 MiB (2p) |
+| CPython 3.13.18 (GIL) | 602,773 | 13.94ms | 10.36ms | 50.61ms | 136.10ms | 35.63 / 25.68 / 61.31 µs | 229 / 719 MiB (51p) |
+| CPython 3.13.6t (FT) | 592,541 | 14.40ms | 10.69ms | 52.29ms | 242.00ms | 38.15 / 24.61 / 62.77 µs | 433 / 1,271 MiB (51p) |
+| RustPython 0.6.0 | 238,967 | 41.39ms | 38.96ms | 85.67ms | 257.57ms | 146.35 / 36.89 / 183.24 µs | 624 / 3,069 MiB (53p) |
+
+</details>
+
+<details>
+<summary><strong>View detailed numbers — wrk -t64 (10, 20, 30, 40, 50 server workers)</strong></summary>
+
+#### 10 server workers (`wrk -t64 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **207,283** | **48.69ms** | **46.56ms** | **74.61ms** | **387.04ms** | **25.28 / 26.79 / 52.07 µs** | 671 / 696 MiB (2p) |
+| CPython 3.13.6t (FT) | 193,240 | 51.66ms | 50.39ms | 78.13ms | 134.88ms | 27.84 / 23.87 / 51.71 µs | 105 / 270 MiB (11p) |
+| CPython 3.13.18 (GIL) | 191,644 | 52.08ms | 51.05ms | 77.63ms | 144.65ms | 27.02 / 25.14 / 52.16 µs | 77 / 159 MiB (11p) |
+| RustPython 0.6.0 | 77,835 | 128.18ms | 123.41ms | 181.60ms | 343.01ms | 99.14 / 29.32 / 128.46 µs | 262 / 788 MiB (13p) |
+
+#### 20 server workers (`wrk -t64 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **376,017** | **27.52ms** | **25.63ms** | **51.87ms** | **415.93ms** | **26.55 / 27.68 / 54.23 µs** | 673 / 697 MiB (2p) |
+| CPython 3.13.18 (GIL) | 329,028 | 30.34ms | 29.54ms | 54.01ms | 126.35ms | 33.41 / 27.33 / 60.75 µs | 101 / 299 MiB (21p) |
+| CPython 3.13.6t (FT) | 324,161 | 30.80ms | 29.89ms | 54.76ms | 105.21ms | 35.10 / 26.55 / 61.66 µs | 183 / 520 MiB (21p) |
+| RustPython 0.6.0 | 131,369 | 75.98ms | 73.93ms | 106.37ms | 220.50ms | 118.87 / 33.29 / 152.16 µs | 336 / 1,343 MiB (23p) |
+
+#### 30 server workers (`wrk -t64 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **537,503** | **20.21ms** | **17.10ms** | **57.37ms** | **506.72ms** | **26.33 / 27.48 / 53.80 µs** | 795 / 819 MiB (2p) |
+| CPython 3.13.18 (GIL) | 476,169 | 20.94ms | 20.13ms | 42.68ms | 110.81ms | 35.38 / 26.72 / 62.10 µs | 142 / 437 MiB (31p) |
+| CPython 3.13.6t (FT) | 467,626 | 21.36ms | 20.55ms | 45.06ms | 127.58ms | 37.53 / 25.89 / 63.42 µs | 266 / 768 MiB (31p) |
+| RustPython 0.6.0 | 169,826 | 58.77ms | 57.81ms | 89.68ms | 194.90ms | 140.70 / 35.80 / 176.50 µs | 431 / 1,902 MiB (33p) |
+
+#### 40 server workers (`wrk -t64 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **577,080** | **18.19ms** | **14.62ms** | **59.24ms** | **469.40ms** | **27.90 / 27.34 / 55.24 µs** | 1,882 / 1,906 MiB (2p) |
+| CPython 3.13.18 (GIL) | 545,481 | 18.35ms | 15.21ms | 56.15ms | 184.40ms | 36.12 / 26.49 / 62.61 µs | 184 / 579 MiB (41p) |
+| CPython 3.13.6t (FT) | 530,531 | 18.83ms | 15.73ms | 56.21ms | 182.50ms | 40.77 / 26.33 / 67.10 µs | 352 / 1,022 MiB (41p) |
+| RustPython 0.6.0 | 213,312 | 46.83ms | 45.46ms | 77.80ms | 193.07ms | 147.72 / 37.49 / 185.21 µs | 524 / 2,482 MiB (43p) |
+
+#### 50 server workers (`wrk -t64 -c10000 -d30s`)
+
+| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) | Memory (`PSS` / `RSS`) |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **587,823** | **18.16ms** | **13.75ms** | **75.36ms** | **552.09ms** | **27.43 / 26.12 / 53.55 µs** | 2,343 / 2,367 MiB (2p) |
+| CPython 3.13.18 (GIL) | 544,844 | 18.25ms | 14.77ms | 63.96ms | 200.93ms | 37.20 / 26.29 / 63.50 µs | 228 / 716 MiB (51p) |
+| CPython 3.13.6t (FT) | 544,376 | 18.37ms | 14.95ms | 63.96ms | 188.88ms | 39.82 / 26.06 / 65.88 µs | 433 / 1,272 MiB (51p) |
+| RustPython 0.6.0 | 241,131 | 41.49ms | 38.40ms | 84.25ms | 270.73ms | 152.77 / 38.82 / 191.59 µs | 603 / 3,083 MiB (53p) |
+
+</details>
+
+### Reproduce
+
+```sh
+# terminal 1 — server ([port=8000] [num_workers=cpu_count])
+ulimit -n 65536 && epython multiprocess_server.py 8000 50
+
+# terminal 2 — load generator (no "Socket errors:" line = 0 errors across all 10k connections)
+ulimit -n 65536 && wrk -t32 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
+```
+
+---
+
+## Django Benchmark
+
+[`django_server.py`](django_server.py) (`Django 6.1.3`, `wrk -t8 -c200 -d30s --latency` over loopback; see [Test Machine](#test-machine)). All four interpreters ran on `waitress 3.0.2` (`1w × 16t`, no `os.fork()`), with CPython `gunicorn 27.0.1` (`1w × 16t` and `16w` prefork) as reference baselines.
+
+Django's template/middleware layer is CPU-bound pure-Python OOP rather than network I/O: CPython `gunicorn 16w` prefork leads (`15,480` `/template/`, `31,933` `/json/`), and CPython FT leads `1w × 16t` (`1,461` / `9,814`). On `/json/`, `EPython` reaches **2,495 req/s** with `0` errors (ahead of threaded CPython GIL `2,141` / `1,527`); on `/template/` it reaches **277 req/s**.
+
+<table>
+<tr>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "Django /template/ — Waitress 16t (Req/s)"
+    x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
+    y-axis "Req/s" 0 --> 1800
+    bar [277, 1461, 517, 322]
+```
+
+</td>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "Django /json/ — Waitress 16t (Req/s)"
+    x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
+    y-axis "Req/s" 0 --> 11000
+    bar [2495, 9814, 2141, 2614]
+```
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><strong>View Django numbers &amp; reproduce commands</strong></summary>
+
+#### `GET /template/` (`wrk -t8 -c200 -d30s --latency`)
+
+| Runtime / Server | Req/s | Avg | p50 | p99 | Steady CPU/req (`cores`) | Memory (`PSS` / `RSS`) | Errors |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| CPython 3.13.18 GIL (gunicorn 16w prefork) | 15,480.1 | 12.85ms | 12.30ms | 28.29ms | 1,013.5 µs (`15.7c`) | 401 / 663 MiB (17p) | 0 |
+| CPython 3.13.6t FT (gunicorn 1w x 16t) | 1,542.0 | 129.41ms | 126.42ms | 169.05ms | 4,355.5 µs (`6.7c`) | 142 / 165 MiB (2p) | 0 |
+| CPython 3.13.6t FT (waitress 1w x 16t) | 1,461.3 | 66.93ms | 65.44ms | 91.26ms | 4,197.3 µs (`6.1c`) | 117 / 120 MiB (1p) | 0 |
+| CPython 3.13.18 GIL (gunicorn 1w x 16t) | 781.1 | 226.00ms | 244.00ms | 294.70ms | 1,478.6 µs (`1.2c`) | 47 / 68 MiB (2p) | 122 timeouts |
+| CPython 3.13.18 GIL (waitress 1w x 16t) | 517.1 | 184.72ms | 98.73ms | 521.20ms | 2,123.4 µs (`1.1c`) | 35 / 42 MiB (1p) | 27 timeouts |
+| RustPython 0.6.0 (waitress 1w x 16t) | 322.0 | 302.66ms | 301.47ms | 341.95ms | 14,700.5 µs (`4.7c`) | 197 / 200 MiB (1p) | 0 |
+| **EPython 0.1.0 (waitress 1w x 16t)** | **277.4** | **350.80ms** | **349.71ms** | **427.03ms** | **24,942.4 µs** (`6.9c`) | 941 / 988 MiB (4p) | 0 |
+
+#### `GET /json/` (`wrk -t8 -c200 -d30s --latency`)
+
+| Runtime / Server | Req/s | Avg | p50 | p99 | Steady CPU/req (`cores`) | Memory (`PSS` / `RSS`) | Errors |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| CPython 3.13.18 GIL (gunicorn 16w prefork) | 31,933.2 | 6.16ms | 5.89ms | 16.00ms | 467.1 µs (`14.9c`) | 402 / 663 MiB (17p) | 0 |
+| CPython 3.13.6t FT (waitress 1w x 16t) | 9,814.4 | 10.23ms | 9.00ms | 23.09ms | 1,027.8 µs (`10.1c`) | 117 / 120 MiB (1p) | 0 |
+| CPython 3.13.6t FT (gunicorn 1w x 16t) | 7,708.2 | 28.35ms | 25.33ms | 55.14ms | 1,556.0 µs (`12.0c`) | 141 / 164 MiB (2p) | 0 |
+| RustPython 0.6.0 (waitress 1w x 16t) | 2,614.4 | 40.62ms | 34.25ms | 80.89ms | 3,371.0 µs (`8.8c`) | 163 / 165 MiB (1p) | 0 |
+| **EPython 0.1.0 (waitress 1w x 16t)** | **2,495.0** | **43.09ms** | **35.63ms** | **129.01ms** | **3,396.0 µs** (`8.5c`) | 2,175 / 2,223 MiB (4p) | 0 |
+| CPython 3.13.18 GIL (waitress 1w x 16t) | 2,141.2 | 48.55ms | 40.83ms | 96.02ms | 550.7 µs (`1.2c`) | 35 / 42 MiB (1p) | 0 |
+| CPython 3.13.18 GIL (gunicorn 1w x 16t) | 1,527.0 | 129.03ms | 128.20ms | 222.85ms | 825.5 µs (`1.3c`) | 47 / 68 MiB (2p) | 89 timeouts |
+
+#### Reproduce
+
+```sh
+epython -m pip install django waitress
+epython -m waitress --host=127.0.0.1 --port=8000 --threads=16 django_server:application
+
+# CPython Gunicorn baselines (1w x 16t gthread / 16w prefork)
+python3.13t -m gunicorn django_server:application --workers 1 --threads 16 --worker-class gthread --bind 127.0.0.1:8000 --log-level warning
+python3 -m gunicorn django_server:application --workers 16 --bind 127.0.0.1:8000 --log-level warning
+
+# Warmup & measure (/template/ or /json/)
+wrk -t4 -c100 -d5s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d30s --latency http://127.0.0.1:8000/json/
+```
+
+</details>
 
 ---
 
