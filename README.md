@@ -1,60 +1,51 @@
 # EPython
 
-**A GIL-free Python interpreter built on Erlang/OTP's BEAM VM, tailored specifically for high-concurrency network servers.** `EPython` runs Python `threading.Thread` workers and concurrent `asyncio` loops across CPU cores with preemptive BEAM scheduling and shared in-memory state — without a Global Interpreter Lock or multi-process workers.
+**A GIL-free Python 3.13 interpreter built on Erlang/OTP's BEAM VM, tailored specifically for high-concurrency network servers.**
 
-> **Status:** This project is under active development.
->
-> **Scope & trade-off:** `EPython` is designed for concurrent server workloads (high-concurrency HTTP/socket I/O, JSON serialization, multithreaded request handling, and concurrent async tasks). It is **not** a general-purpose replacement for CPython — single-threaded scripts and CPU-heavy pure-Python compute (OOP/numeric/parsing loops) are significantly slower than CPython.
+`EPython` runs Python `threading.Thread` workers and concurrent `asyncio` event loops across CPU cores with preemptive BEAM scheduling and shared in-memory state — without a Global Interpreter Lock or multi-process worker pools. It ships as a single self-contained binary with `pip` built in.
+
+> [!NOTE]
+> This project is under active development.
+
+| Best fit | Not a fit |
+|---|---|
+| High-concurrency HTTP & socket servers (`threading.Thread` + `selectors`) | Single-threaded CLI scripts and sequential batch jobs |
+| JSON APIs, serialization, and concurrent streaming (`asyncio` / async generators) | CPU-bound pure-Python compute (OOP, numeric, regex/parsing loops) |
+| Multi-core services sharing mutable in-memory state across threads | Drop-in speedups for general-purpose CPython scripts |
+
+---
 
 ## Install
 
-Download the binary for your machine from [Releases](https://github.com/erlpython/epython/releases/latest). Each one is a single executable that carries its own Erlang runtime, OpenSSL and native libraries: no Erlang, CPython or anything else needs to be installed.
-
-| Machine | File |
-|---|---|
-| Linux x86_64 | `epython-0.1.0-linux-x86_64-standalone` |
-| Linux arm64 (aarch64) | `epython-0.1.0-linux-arm64-standalone` |
-| macOS, Apple Silicon | `epython-0.1.0-macos-arm64-standalone` |
-| macOS, Intel | `epython-0.1.0-macos-x86_64-standalone` |
+Download a standalone binary from [Releases](https://github.com/erlpython/epython/releases/latest) (Linux `x86_64`/`arm64`, macOS `arm64`/`x86_64` — bundles Erlang/OTP, OpenSSL, and built-in `pip`):
 
 ```sh
-# Pick the file for your machine (here Linux x86_64).
-F=epython-0.1.0-linux-x86_64-standalone
-curl -LO https://github.com/erlpython/epython/releases/download/v0.1.0/$F
-curl -LO https://github.com/erlpython/epython/releases/download/v0.1.0/SHA256SUMS
-grep "$F" SHA256SUMS | sha256sum -c -     # macOS: grep "$F" SHA256SUMS | shasum -a 256 -c -
-
-chmod +x "$F"
-mkdir -p ~/.local/bin && mv "$F" ~/.local/bin/epython   # or /usr/local/bin/epython
-epython -c 'import sys; print(sys.version)'
+F=epython-0.1.0-linux-x86_64-standalone   # or linux-arm64 / macos-arm64 / macos-x86_64
+curl -LO "https://github.com/erlpython/epython/releases/download/v0.1.0/$F"
+chmod +x "$F" && mv "$F" ~/.local/bin/epython
 ```
-
-The first run unpacks the binary into `~/.cache/epython/standalone/` (about 50 MB, about a second; set `EPY_STANDALONE_CACHE` to put it elsewhere). Later runs start from there.
-
-### Use
 
 ```sh
-epython script.py                      # run a program
-epython -c 'print("hello")'            # run a string
-epython                                # interactive prompt
-epython -m pip install fastapi httpx   # install packages (pip is built in)
-epython -m pip list
+epython script.py                      # run a script
+epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 ```
 
-`epython -m pip` needs no CPython or separate pip: it installs pure-Python and `cp313`/`abi3` wheels from PyPI into `~/.local/share/epython/site-packages` (set `EPY_SITE` to change it). C extension modules load through epython's own implementation of the CPython C API.
-
-### Requirements
-
-- **Linux:** glibc 2.38 or newer (for example Ubuntu 24.04+, Debian 13+, Fedora 39+). musl distributions (Alpine) aren't supported.
-- **macOS:** 13 (Ventura) or newer, on Apple Silicon or Intel. A binary downloaded with a browser may be blocked by Gatekeeper: run `xattr -d com.apple.quarantine epython` once (files fetched with `curl` aren't affected).
+---
 
 ## C10K Multithreaded I/O Benchmark
 
-[`threaded_server.py`](threaded_server.py) + [`post.lua`](post.lua): multithreaded `selectors` + `SO_REUSEPORT` HTTP server that parses JSON, computes a pure-Python FNV-1a hash, and updates a 64-shard locked dict on every `POST /items`.
+Identical, unmodified [`threaded_server.py`](threaded_server.py) and [`post.lua`](post.lua) run across all four interpreters under **10,000 concurrent keep-alive connections (`wrk -c10000`)**. On every `POST /items`, each `selectors` + `SO_REUSEPORT` worker thread parses JSON, computes a pure-Python FNV-1a hash, updates a 64-shard `threading.Lock` dict, and returns a JSON response.
 
-### Results
+### Summary
 
-Strictly sequential 30s runs at `-c10000` across 10, 20, 30, 40, and 50 server threads for `wrk -t16`, `-t24`, `-t32`, and `-t64` (0 socket errors, 0 non-2xx across all 80 runs). `EPython 0.1.0` leads on throughput, `p50`, and CPU/req in **all 20 / 20** configurations — peaking at **505,087 req/s** (`wrk -t24`, 50t; **+60.2%** over CPython 3.13.6t FT, **52.1×** CPython GIL, **69.5×** RustPython) and **491,233 req/s** (`wrk -t64`, 50t; **+67.3%** over CPython 3.13.6t FT with **9.9×** lower `p99`: `70.60ms` vs `696.03ms`).
+Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server threads for `wrk -t16`, `-t24`, `-t32`, and `-t64` (**80 runs total, 0 socket errors, 0 non-2xx**). `EPython 0.1.0` wins throughput, `p50`, and CPU/req in **all 20 / 20** configurations — peaking at **505,087 req/s** (**+60.2%** over CPython 3.13.6t FT, **52.1×** CPython GIL, **69.5×** RustPython) and delivering **+67.3%** higher throughput with **9.9× lower `p99`** than CPython FT at `wrk -t64`, 50 threads.
+
+| Interpreter | Peak Req/s | `wrk -t24`, 50t (`p50`) | `wrk -t64`, 50t | `p99` (`t64`, 50t) | CPU/req (`t24`, 50t) |
+|---|--:|--:|--:|--:|--:|
+| **EPython 0.1.0** | **505,087** (`t24`, 50t) | **505,087** (`13.39ms`) | **491,233** | **70.60ms** | **61.49 µs** |
+| CPython 3.13.6t (FT) | 417,353 (`t16`, 40t) | 315,231 (`29.51ms`) | 293,681 | 696.03ms | 90.54 µs |
+| RustPython 0.6.0 | 31,792 (`t64`, 10t) | 7,272 (`1.37s`) | 7,422 | 1.59s | 1,530.31 µs |
+| CPython 3.13.18 (GIL) | 10,479 (`t64`, 10t) | 9,694 (`998.65ms`) | 9,909 | 1.41s | 141.71 µs |
 
 <table>
 <tr>
@@ -64,12 +55,22 @@ Strictly sequential 30s runs at `-c10000` across 10, 20, 30, 40, and 50 server t
 ---
 config:
   xyChart:
-    width: 400
-    height: 260
+    width: 440
+    height: 290
     titleFontSize: 13
+    titlePadding: 18
+    xAxis:
+      labelPadding: 8
+      titlePadding: 12
+    yAxis:
+      labelPadding: 8
+      titlePadding: 12
   themeVariables:
     xyChart:
+      backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t16 — Throughput (Req/s)"
@@ -88,12 +89,22 @@ xychart-beta
 ---
 config:
   xyChart:
-    width: 400
-    height: 260
+    width: 440
+    height: 290
     titleFontSize: 13
+    titlePadding: 18
+    xAxis:
+      labelPadding: 8
+      titlePadding: 12
+    yAxis:
+      labelPadding: 8
+      titlePadding: 12
   themeVariables:
     xyChart:
+      backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t24 — Throughput (Req/s)"
@@ -114,12 +125,22 @@ xychart-beta
 ---
 config:
   xyChart:
-    width: 400
-    height: 260
+    width: 440
+    height: 290
     titleFontSize: 13
+    titlePadding: 18
+    xAxis:
+      labelPadding: 8
+      titlePadding: 12
+    yAxis:
+      labelPadding: 8
+      titlePadding: 12
   themeVariables:
     xyChart:
+      backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t32 — Throughput (Req/s)"
@@ -138,12 +159,22 @@ xychart-beta
 ---
 config:
   xyChart:
-    width: 400
-    height: 260
+    width: 440
+    height: 290
     titleFontSize: 13
+    titlePadding: 18
+    xAxis:
+      labelPadding: 8
+      titlePadding: 12
+    yAxis:
+      labelPadding: 8
+      titlePadding: 12
   themeVariables:
     xyChart:
+      backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+  themeCSS: |
+    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t64 — Throughput (Req/s)"
@@ -159,7 +190,7 @@ xychart-beta
 </tr>
 </table>
 
-Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
+**Legend:** 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
 <summary><strong>View detailed numbers — wrk -t16 (10, 20, 30, 40, 50 server threads)</strong></summary>
@@ -361,16 +392,16 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 
 </details>
 
-### Setup
+### Reproduce
 
-macOS:
+**macOS:**
 
 ```sh
 brew install wrk
 sudo sysctl -w kern.ipc.somaxconn=16384
 ```
 
-Linux:
+**Linux:**
 
 ```sh
 sudo apt install wrk
@@ -379,19 +410,40 @@ sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535" net.ipv4.tcp_tw_reuse=1
 sudo sysctl -w kernel.threads-max=4194304 kernel.pid_max=4194304 vm.max_map_count=1048576
 ```
 
-### Run
+**Run:**
 
 ```sh
-# terminal 1 (arguments: [port=8000] [num_threads=cpu_count])
+# terminal 1 — server ([port=8000] [num_threads=cpu_count])
 ulimit -n 65536 && epython threaded_server.py 8000 50
 
-# terminal 2
+# terminal 2 — load generator (no "Socket errors:" line = 0 errors across all 10k connections)
 ulimit -n 65536 && wrk -t24 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
 ```
 
-No `Socket errors:` line means all 10,000 connections completed cleanly with 0 errors.
+---
 
-### Machine
+## Multithreaded `pyperformance` Highlights
+
+Selected `pyperformance 1.14.0` benchmarks run at **8 concurrent threads** (time per operation, lower is faster) where `EPython 0.1.0` leads across all four interpreters. Across the 25 benchmarks completed by all four runtimes, `EPython` achieves the highest `1t → 8t` scaling (**4.03×** geometric mean vs. **2.17×** CPython 3.13.6t FT, **1.30×** RustPython, **0.85×** CPython GIL) — shining on JSON serialization, concurrent `asyncio` trees, and generators, while CPython remains significantly faster on single-threaded scripts and CPU-heavy pure-Python compute loops.
+
+| Benchmark (`8` threads, lower is faster) | **EPython 0.1.0** | CPython 3.13.6t (FT) | CPython 3.13.18 (GIL) | RustPython 0.6.0 | EPython vs. FT | EPython vs. GIL |
+|---|--:|--:|--:|--:|--:|--:|
+| `json_dumps` | **2.06ms** | 6.67ms | 9.63ms | 42.51ms | **3.23× faster** | **4.67× faster** |
+| `spectral_norm` | **44.14ms** | 134.67ms | 102.45ms | 620.55ms | **3.05× faster** | **2.32× faster** |
+| `async_generators`¹ | **53.22ms** | 149.57ms | 502.23ms | timeout | **2.81× faster** | **9.44× faster** |
+| `async_tree_memoization` | **196.67ms** | 519.22ms | 949.99ms | 1.72s | **2.64× faster** | **4.83× faster** |
+| `async_tree_cpu_io_mixed` | **256.97ms** | 534.55ms | 1.08s | 1.72s | **2.08× faster** | **4.19× faster** |
+| `async_tree` | **141.73ms** | `RuntimeError`² | 821.96ms | 1.56s | — | **5.80× faster** |
+| `async_tree_io` | **312.42ms** | `RuntimeError`² | 1.52s | timeout | — | **4.87× faster** |
+| `pidigits` | **21.70ms** | 29.30ms | 195.37ms | 25.85ms | **1.35× faster** | **9.00× faster** |
+| `generators` | **50.10ms** | 60.02ms | 225.49ms | 654.94ms | **1.20× faster** | **4.50× faster** |
+
+> ¹ `EPython` also leads single-threaded (`1t`) on `async_generators` (`229.63ms` vs. `361.40ms` GIL / `409.76ms` FT) and `coroutines` (`14.69ms` vs. `22.38ms` GIL / `25.05ms` FT).
+> ² `CPython 3.13.6t (FT)` raised `RuntimeError: Set changed size during iteration` when running 8 concurrent `asyncio` event loops.
+
+---
+
+## Test Machine
 
 | Spec | Value |
 |---|---|
