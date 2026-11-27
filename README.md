@@ -55,22 +55,26 @@ Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server thre
 ---
 config:
   xyChart:
-    width: 440
-    height: 290
-    titleFontSize: 13
-    titlePadding: 18
+    width: 640
+    height: 340
+    titleFontSize: 22
+    titlePadding: 14
     xAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
     yAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
+    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t16 — Throughput (Req/s)"
@@ -89,22 +93,26 @@ xychart-beta
 ---
 config:
   xyChart:
-    width: 440
-    height: 290
-    titleFontSize: 13
-    titlePadding: 18
+    width: 640
+    height: 340
+    titleFontSize: 22
+    titlePadding: 14
     xAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
     yAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
+    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t24 — Throughput (Req/s)"
@@ -125,22 +133,26 @@ xychart-beta
 ---
 config:
   xyChart:
-    width: 440
-    height: 290
-    titleFontSize: 13
-    titlePadding: 18
+    width: 640
+    height: 340
+    titleFontSize: 22
+    titlePadding: 14
     xAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
     yAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
+    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t32 — Throughput (Req/s)"
@@ -159,22 +171,26 @@ xychart-beta
 ---
 config:
   xyChart:
-    width: 440
-    height: 290
-    titleFontSize: 13
-    titlePadding: 18
+    width: 640
+    height: 340
+    titleFontSize: 22
+    titlePadding: 14
     xAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
     yAxis:
+      labelFontSize: 19
       labelPadding: 8
-      titlePadding: 12
+      titleFontSize: 20
+      titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 14px) scale(0.82, 0.88); transform-origin: 0 0; }
+    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t64 — Throughput (Req/s)"
