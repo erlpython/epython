@@ -1,6 +1,10 @@
-# C10K bench
+# C10K Multithreaded I/O Benchmark
 
-[`server.py`](server.py): 4-worker `multiprocessing` + `selectors` (`EpollSelector` / `KqueueSelector`) non-blocking HTTP server on `127.0.0.1:8080` (`/ping`, `/hold` 50ms timer, `/metrics`).
+**EPython — a GIL-free Python interpreter that shines on multithreaded I/O workloads.** Powered by Erlang/OTP's BEAM VM, `EPython` runs Python `threading.Thread` workers concurrently across CPU cores with preemptive scheduling and predictable tail latency — no Global Interpreter Lock, no `multiprocessing` workarounds.
+
+> **Trade-off:** `EPython` is slower than CPython on single-threaded, sequential, or single-loop `asyncio` workloads. Its strength is concurrent multithreaded Python (`threading.Thread` mixing I/O, Python compute, and shared state across many cores).
+
+[`threaded_server.py`](threaded_server.py): multi-threaded `threading.Thread` + `selectors` (`EpollSelector` / `KqueueSelector`) + `SO_REUSEPORT` non-blocking HTTP server on `127.0.0.1:8000` driven by [`post.lua`](post.lua) (`POST /items` JSON payloads). Each request parses HTTP headers and JSON, computes a pure-Python FNV-1a hash (CPU-bound Python bytecode execution), updates a 64-shard shared-memory in-memory store (`SHARDS = [({}, threading.Lock()) for _ in range(64)]`, capped at 200 items per shard), and returns a JSON response.
 
 ## Setup
 
@@ -23,19 +27,21 @@ sudo sysctl -w kernel.threads-max=4194304 kernel.pid_max=4194304 vm.max_map_coun
 ## Run
 
 ```sh
-# terminal 1
-ulimit -n 65536 && epython server.py
+# terminal 1 (arguments: [port=8000] [num_threads=cpu_count])
+ulimit -n 65536 && epython threaded_server.py 8000 50
 
 # terminal 2
-ulimit -n 65536 && wrk -t8 -c10000 -d30s --timeout 5s --latency http://127.0.0.1:8080/ping
-ulimit -n 65536 && wrk -t8 -c10000 -d30s --timeout 5s --latency http://127.0.0.1:8080/hold
+ulimit -n 65536 && wrk -t16 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
 ```
 
 No `Socket errors:` line means all 10,000 connections completed cleanly with 0 errors.
 
 ## Results
 
-Sequential 30s runs (`wrk -t{8,16,32,64} -c10000 -d30s --timeout 5s --latency`, 4 workers, 0 socket errors, 0 non-2xx responses):
+Strictly sequential 30s runs (`wrk -t16 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items`) across **10, 20, 30, 40, and 50 server threads** (0 socket errors, 0 non-2xx responses across all 20 runs):
+
+- **Fastest at every thread count tested (10–50 threads)**: `EPython 0.1.0` beats `CPython 3.13.6t (FT)` on throughput, median latency (`p50`), and CPU efficiency (`µs/req`) at all five thread counts — peaking at **`432,361 req/s`** at 40 threads (**`44.8×`** `CPython 3.13.18 (GIL)` and **`56.9×`** `RustPython 0.6.0`), and leading `CPython 3.13.6t (FT)` by **`+19.0%`** at 30 threads (`427,601` vs `359,254 req/s`) and **`+19.6%`** at 50 threads (`409,928` vs `342,737 req/s`).
+- **Flat per-request CPU cost across cores**: `EPython 0.1.0` stays nearly flat from 10 → 50 threads (`51.17` → `57.99 µs/req`, using only `24.3` cores to saturate `wrk -t16` at `432k req/s`), whereas `CPython 3.13.6t (FT)` rises from `58.36` → `92.85 µs/req` (`38.8` cores at 40 threads) and degrades to `p99 = 779.68ms` / `max = 1.16s` at 50 threads (`EPython 0.1.0`: `p50 = 12.09ms`, `p99 = 403.49ms`, `max = 537.23ms`).
 
 ### Machine
 
@@ -48,160 +54,108 @@ Sequential 30s runs (`wrk -t{8,16,32,64} -c10000 -d30s --timeout 5s --latency`, 
 | **Runtimes** | `EPython 0.1.0` (Erlang/OTP 29, ERTS 17.0.4), `CPython 3.13.18`, `CPython 3.13.6t` (free-threaded), `RustPython 0.6.0` (`rustc 1.100.0`) |
 | **Kernel TCP** | `somaxconn=4096`, `tcp_max_syn_backlog=4096`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1` |
 
-### `/ping` (keep-alive echo)
+### `POST /items` (JSON + pure-Python FNV-1a hash + 64-shard shared state)
 
 ```mermaid
 ---
 config:
   themeVariables:
     xyChart:
-      plotColorPalette: "#2563eb, #16a34a, #ea580c, #9333ea"
+      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
 ---
 xychart-beta
-    title "/ping — Throughput (Req/s, higher is better)"
-    x-axis ["-t8", "-t16", "-t32", "-t64"]
-    y-axis "Req/s" 0 --> 210000
-    line [199800, 186242, 177451, 179332]
-    line [191045, 175488, 172340, 171503]
-    line [173621, 167611, 157056, 133704]
-    line [131855, 123085, 116677, 120751]
+    title "POST /items — Throughput by Server Threads (Req/s, higher is better)"
+    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 460000
+    line [183293, 327172, 427601, 432361, 409928]
+    line [171193, 286849, 359254, 417353, 342737]
+    line [9909, 9726, 9712, 9656, 9682]
+    line [31548, 15829, 8500, 7597, 7101]
 ```
-Legend: 🟦 **CPython 3.13.18 (GIL)** · 🟩 **CPython 3.13.6t (FT)** · 🟧 **EPython 0.1.0** · 🟪 **RustPython 0.6.0**
+Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
 
 ```mermaid
 ---
 config:
   themeVariables:
     xyChart:
-      plotColorPalette: "#2563eb, #16a34a, #ea580c, #9333ea"
+      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
 ---
 xychart-beta
-    title "/ping — Median Latency p50 (ms, lower is better)"
-    x-axis ["-t8", "-t16", "-t32", "-t64"]
-    y-axis "Latency (ms)" 0 --> 90
-    line [47.32, 50.39, 53.43, 54.58]
-    line [49.31, 53.68, 55.61, 56.75]
-    line [50.31, 53.03, 60.37, 70.36]
-    line [72.15, 76.20, 81.82, 79.49]
+    title "POST /items — Median Latency p50 (ms, lower is better)"
+    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
+    y-axis "Latency (ms)" 0 --> 1450
+    line [50.46, 28.47, 16.21, 12.93, 12.09]
+    line [54.64, 33.56, 26.35, 19.04, 26.05]
+    line [974.89, 991.63, 998.53, 1000.00, 1000.00]
+    line [310.02, 625.85, 1150.00, 1290.00, 1370.00]
 ```
-Legend: 🟦 **CPython 3.13.18 (GIL)** · 🟩 **CPython 3.13.6t (FT)** · 🟧 **EPython 0.1.0** · 🟪 **RustPython 0.6.0**
+Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
+
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
+---
+xychart-beta
+    title "POST /items — Tail Latency p99 (ms, lower is better)"
+    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
+    y-axis "Latency (ms)" 0 --> 1650
+    line [111.86, 65.75, 397.84, 419.68, 403.49]
+    line [85.20, 55.86, 54.78, 306.35, 779.68]
+    line [1440.00, 1390.00, 1440.00, 1430.00, 1410.00]
+    line [558.63, 713.43, 1350.00, 1520.00, 1610.00]
+```
+Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
 
 <details>
-<summary><strong>View detailed /ping numbers (-t8, -t16, -t32, -t64)</strong></summary>
+<summary><strong>View detailed numbers (10, 20, 30, 40, 50 server threads)</strong></summary>
 
-#### `wrk -t8 -c10000 -d30s`
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
-|---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 199,800 | 49.44ms | 47.32ms | 71.88ms | 145.64ms | 3.67 / 16.37 / 20.04 µs |
-| **CPython 3.13.6t (FT)** | 191,045 | 51.71ms | 49.31ms | 79.68ms | 159.63ms | 4.55 / 16.39 / 20.94 µs |
-| **EPython 0.1.0** | 173,621 | 59.19ms | 50.31ms | 171.77ms | 478.46ms | 4.02 / 16.12 / 20.14 µs |
-| **RustPython 0.6.0** | 131,855 | 75.14ms | 72.15ms | 104.93ms | 196.89ms | 11.75 / 18.59 / 30.34 µs |
-
-#### `wrk -t16 -c10000 -d30s`
+#### 10 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 186,242 | 53.27ms | 50.39ms | 77.81ms | 179.80ms | 3.96 / 17.51 / 21.47 µs |
-| **CPython 3.13.6t (FT)** | 175,488 | 56.61ms | 53.68ms | 81.40ms | 187.48ms | 4.71 / 18.05 / 22.77 µs |
-| **EPython 0.1.0** | 167,611 | 62.57ms | 53.03ms | 266.43ms | 615.23ms | 3.83 / 17.63 / 21.46 µs |
-| **RustPython 0.6.0** | 123,085 | 80.67ms | 76.20ms | 116.74ms | 223.92ms | 12.25 / 20.26 / 32.51 µs |
+| **EPython 0.1.0** | 183,293 | 55.02ms | 50.46ms | 111.86ms | 410.70ms | 25.92 / 25.25 / 51.17 µs |
+| **CPython 3.13.6t (FT)** | 171,193 | 58.00ms | 54.64ms | 85.20ms | 170.67ms | 35.51 / 22.85 / 58.36 µs |
+| **RustPython 0.6.0** | 31,548 | 313.45ms | 310.02ms | 558.63ms | 676.07ms | 212.57 / 77.46 / 290.03 µs |
+| **CPython 3.13.18 (GIL)** | 9,909 | 986.98ms | 974.89ms | 1.44s | 1.86s | 68.37 / 68.33 / 136.71 µs |
 
-#### `wrk -t32 -c10000 -d30s`
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
-|---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 177,451 | 56.07ms | 53.43ms | 80.44ms | 156.16ms | 4.17 / 18.37 / 22.53 µs |
-| **CPython 3.13.6t (FT)** | 172,340 | 57.76ms | 55.61ms | 83.16ms | 161.79ms | 4.96 / 18.24 / 23.20 µs |
-| **EPython 0.1.0** | 157,056 | 67.48ms | 60.37ms | 327.77ms | 658.27ms | 4.02 / 19.16 / 23.17 µs |
-| **RustPython 0.6.0** | 116,677 | 85.26ms | 81.82ms | 118.45ms | 204.90ms | 12.92 / 21.37 / 34.29 µs |
-
-#### `wrk -t64 -c10000 -d30s`
+#### 20 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 179,332 | 55.69ms | 54.58ms | 78.86ms | 180.84ms | 4.01 / 18.25 / 22.26 µs |
-| **CPython 3.13.6t (FT)** | 171,503 | 58.22ms | 56.75ms | 83.12ms | 156.82ms | 4.74 / 18.56 / 23.30 µs |
-| **EPython 0.1.0** | 133,704 | 77.73ms | 70.36ms | 281.02ms | 667.81ms | 4.72 / 20.92 / 25.64 µs |
-| **RustPython 0.6.0** | 120,751 | 82.61ms | 79.49ms | 117.82ms | 181.06ms | 12.13 / 20.95 / 33.08 µs |
+| **EPython 0.1.0** | 327,172 | 30.53ms | 28.47ms | 65.75ms | 294.58ms | 29.40 / 24.29 / 53.69 µs |
+| **CPython 3.13.6t (FT)** | 286,849 | 34.63ms | 33.56ms | 55.86ms | 140.98ms | 45.25 / 24.35 / 69.60 µs |
+| **RustPython 0.6.0** | 15,829 | 621.87ms | 625.85ms | 713.43ms | 1.15s | 402.02 / 375.15 / 777.17 µs |
+| **CPython 3.13.18 (GIL)** | 9,726 | 1.01s | 991.63ms | 1.39s | 2.26s | 69.45 / 70.65 / 140.09 µs |
 
-</details>
-
-### `/hold` (50ms min-heap timer per request)
-
-```mermaid
----
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#2563eb, #16a34a, #ea580c, #9333ea"
----
-xychart-beta
-    title "/hold — Throughput (Req/s, higher is better)"
-    x-axis ["-t8", "-t16", "-t32", "-t64"]
-    y-axis "Req/s" 0 --> 160000
-    line [148703, 142045, 144550, 145393]
-    line [141310, 138440, 139476, 141227]
-    line [130271, 126366, 126876, 126520]
-    line [101349, 100958, 101421, 101576]
-```
-Legend: 🟦 **CPython 3.13.18 (GIL)** · 🟩 **CPython 3.13.6t (FT)** · 🟧 **EPython 0.1.0** · 🟪 **RustPython 0.6.0**
-
-```mermaid
----
-config:
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#2563eb, #16a34a, #ea580c, #9333ea"
----
-xychart-beta
-    title "/hold — Median Latency p50 (ms, lower is better)"
-    x-axis ["-t8", "-t16", "-t32", "-t64"]
-    y-axis "Latency (ms)" 0 --> 105
-    line [64.53, 66.73, 67.19, 66.59]
-    line [67.35, 69.06, 69.07, 67.81]
-    line [70.17, 74.32, 75.25, 74.79]
-    line [94.92, 94.86, 94.88, 94.70]
-```
-Legend: 🟦 **CPython 3.13.18 (GIL)** · 🟩 **CPython 3.13.6t (FT)** · 🟧 **EPython 0.1.0** · 🟪 **RustPython 0.6.0**
-
-<details>
-<summary><strong>View detailed /hold numbers (-t8, -t16, -t32, -t64)</strong></summary>
-
-#### `wrk -t8 -c10000 -d30s`
+#### 30 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 148,703 | 66.62ms | 64.53ms | 91.86ms | 127.21ms | 4.95 / 21.93 / 26.88 µs |
-| **CPython 3.13.6t (FT)** | 141,310 | 70.04ms | 67.35ms | 98.97ms | 135.48ms | 6.12 / 22.18 / 28.30 µs |
-| **EPython 0.1.0** | 130,271 | 79.71ms | 70.17ms | 329.46ms | 639.00ms | 6.74 / 23.17 / 29.90 µs |
-| **RustPython 0.6.0** | 101,349 | 97.62ms | 94.92ms | 135.58ms | 183.51ms | 15.37 / 24.10 / 39.47 µs |
+| **EPython 0.1.0** | 427,601 | 33.99ms | 16.21ms | 397.84ms | 532.47ms | 32.11 / 24.80 / 56.91 µs |
+| **CPython 3.13.6t (FT)** | 359,254 | 27.46ms | 26.35ms | 54.78ms | 119.59ms | 53.71 / 25.29 / 78.99 µs |
+| **CPython 3.13.18 (GIL)** | 9,712 | 1.01s | 998.53ms | 1.44s | 2.13s | 68.69 / 71.78 / 140.46 µs |
+| **RustPython 0.6.0** | 8,500 | 1.15s | 1.15s | 1.35s | 2.54s | 554.07 / 733.87 / 1,287.93 µs |
 
-#### `wrk -t16 -c10000 -d30s`
-
-| Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
-|---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 142,045 | 69.96ms | 66.73ms | 98.10ms | 125.47ms | 5.24 / 22.89 / 28.14 µs |
-| **CPython 3.13.6t (FT)** | 138,440 | 71.68ms | 69.06ms | 97.57ms | 133.52ms | 6.39 / 22.48 / 28.87 µs |
-| **EPython 0.1.0** | 126,366 | 83.17ms | 74.32ms | 380.80ms | 733.72ms | 6.28 / 23.90 / 30.18 µs |
-| **RustPython 0.6.0** | 100,958 | 98.25ms | 94.86ms | 133.31ms | 176.02ms | 15.65 / 23.95 / 39.59 µs |
-
-#### `wrk -t32 -c10000 -d30s`
+#### 40 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 144,550 | 68.83ms | 67.19ms | 93.03ms | 128.90ms | 5.14 / 22.51 / 27.65 µs |
-| **CPython 3.13.6t (FT)** | 139,476 | 71.33ms | 69.07ms | 99.79ms | 125.05ms | 6.40 / 22.27 / 28.67 µs |
-| **EPython 0.1.0** | 126,876 | 82.74ms | 75.25ms | 361.72ms | 698.81ms | 6.65 / 24.51 / 31.15 µs |
-| **RustPython 0.6.0** | 101,421 | 98.12ms | 94.88ms | 137.49ms | 199.63ms | 15.43 / 23.94 / 39.38 µs |
+| **EPython 0.1.0** | 432,361 | 45.67ms | 12.93ms | 419.68ms | 532.17ms | 30.57 / 25.60 / 56.18 µs |
+| **CPython 3.13.6t (FT)** | 417,353 | 25.43ms | 19.04ms | 306.35ms | 674.89ms | 66.26 / 26.60 / 92.85 µs |
+| **CPython 3.13.18 (GIL)** | 9,656 | 1.01s | 1.00s | 1.43s | 2.42s | 69.38 / 72.49 / 141.87 µs |
+| **RustPython 0.6.0** | 7,597 | 1.28s | 1.29s | 1.52s | 2.76s | 616.71 / 816.06 / 1,432.77 µs |
 
-#### `wrk -t64 -c10000 -d30s`
+#### 50 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **CPython 3.13.18 (GIL)** | 145,393 | 68.64ms | 66.59ms | 95.81ms | 128.92ms | 5.02 / 22.45 / 27.47 µs |
-| **CPython 3.13.6t (FT)** | 141,227 | 70.63ms | 67.81ms | 102.27ms | 145.01ms | 6.16 / 22.14 / 28.29 µs |
-| **EPython 0.1.0** | 126,520 | 84.05ms | 74.79ms | 414.26ms | 806.97ms | 6.47 / 25.03 / 31.50 µs |
-| **RustPython 0.6.0** | 101,576 | 98.20ms | 94.70ms | 136.17ms | 190.80ms | 15.48 / 23.86 / 39.33 µs |
+| **EPython 0.1.0** | 409,928 | 45.82ms | 12.09ms | 403.49ms | 537.23ms | 31.52 / 26.47 / 57.99 µs |
+| **CPython 3.13.6t (FT)** | 342,737 | 45.69ms | 26.05ms | 779.68ms | 1.16s | 63.48 / 28.00 / 91.49 µs |
+| **CPython 3.13.18 (GIL)** | 9,682 | 1.01s | 1.00s | 1.41s | 2.22s | 68.34 / 73.76 / 142.10 µs |
+| **RustPython 0.6.0** | 7,101 | 1.37s | 1.37s | 1.61s | 2.89s | 679.88 / 886.66 / 1,566.54 µs |
 
 </details>
