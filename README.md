@@ -440,7 +440,7 @@ ulimit -n 65536 && wrk -t24 -c10000 -d30s --timeout 5s --latency -s post.lua htt
 
 ## Multithreaded `pyperformance` Highlights
 
-Selected `pyperformance 1.14.0` benchmarks run at **8 concurrent threads** (time per operation, lower is faster) where `EPython 0.1.0` leads across all four interpreters. Across the 25 benchmarks completed by all four runtimes, `EPython` achieves the highest `1t → 8t` scaling (**4.03×** geometric mean vs. **2.17×** CPython 3.13.6t FT, **1.30×** RustPython, **0.85×** CPython GIL) — shining on JSON serialization, concurrent `asyncio` trees, and generators, while CPython remains significantly faster on single-threaded scripts and CPU-heavy pure-Python compute loops.
+Selected `pyperformance 1.14.0` benchmarks at **8 threads** (time/op, lower is faster) where `EPython` leads. CPython remains faster on single-threaded and CPU-bound pure-Python compute.
 
 | Benchmark (`8` threads, lower is faster) | **EPython 0.1.0** | CPython 3.13.6t (FT) | CPython 3.13.18 (GIL) | RustPython 0.6.0 | EPython vs. FT | EPython vs. GIL |
 |---|--:|--:|--:|--:|--:|--:|
