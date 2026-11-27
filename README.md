@@ -54,7 +54,7 @@ BEAM isolates processes and favors immutable data, so `EPython` bridges Python s
 
 - **Django is currently not a fit for `EPython 0.1.0`.** Django's template engine, `Context` stack, `SafeString` subclasses, and middleware/URL-resolver dispatch are heavily CPU-bound pure-Python OOP — where CPython 3.13's specializing interpreter is much faster per thread (`0.47ms` vs `6.39ms` single-threaded on `template_view`).
 - **`CPython 3.13.18 (GIL)` with `gunicorn --workers 16` prefork** leads by a wide margin (**`15,480 req/s`** on `/template/`, **`31,933 req/s`** on `/json/`). In single-process multithreaded mode (`1w × 16t`), **`CPython 3.13.6t (FT)`** leads (`1,542 req/s` `/template/`, `9,814 req/s` `/json/`).
-- **`EPython 0.1.0`** (`waitress`, `1w × 16t`) delivers **`2,442 req/s`** on `/json/` (ahead of single-process threaded `CPython 3.13.18 GIL` at `2,141 req/s` with `waitress` / `1,527 req/s` with `gunicorn`, and with **0** timeouts vs `27–122` timeouts on GIL) and **`306 req/s`** on `/template/` (`13.5` cores active).
+- **`EPython 0.1.0`** (`waitress`, `1w × 16t`) delivers **`2,495 req/s`** on `/json/` (ahead of single-process threaded `CPython 3.13.18 GIL` at `2,141 req/s` with `waitress` / `1,527 req/s` with `gunicorn`, and with **0** timeouts vs `27–122` timeouts on GIL) and **`277 req/s`** on `/template/` (`6.9` cores, `941 MiB` PSS — serialized by `asgiref.local._DefaultLocal`'s global `RLock`, which also limits `CPython 3.13.6t FT` to `1,461–1,542 req/s` vs `15,480 req/s` prefork).
 - **WSGI server note:** `gunicorn` calls POSIX `os.fork()` unconditionally in `arbiter.py` (even with `--workers 1 --worker-class gthread`), so it does not run on `EPython 0.1.0` (BEAM is a multi-threaded VM without `os.fork()`) and fails on `RustPython 0.6.0` (`os.utime(fd)` `TypeError`). To compare all four interpreters apples-to-apples on the same WSGI server, all four were benchmarked with pure-Python `waitress 3.0.2` (`1w × 16t`), alongside the `gunicorn 27.0.1` (`gthread` and `16w` prefork) CPython baselines.
 
 <table>
@@ -90,7 +90,7 @@ xychart-beta
     title "Django /template/ — Waitress 16t (Req/s)"
     x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
     y-axis "Req/s" 0 --> 1800
-    bar [306, 1461, 517, 322]
+    bar [277, 1461, 517, 322]
 ```
 
 </td>
@@ -125,7 +125,7 @@ xychart-beta
     title "Django /json/ — Waitress 16t (Req/s)"
     x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
     y-axis "Req/s" 0 --> 11000
-    bar [2442, 9814, 2141, 2614]
+    bar [2495, 9814, 2141, 2614]
 ```
 
 </td>
@@ -145,7 +145,7 @@ xychart-beta
 | CPython 3.13.18 GIL (gunicorn 1w x 16t) | 781.1 | 226.00ms | 244.00ms | 294.70ms | 1,478.6 µs (`1.2c`) | 47 / 68 MiB (2p) | 122 timeouts |
 | CPython 3.13.18 GIL (waitress 1w x 16t) | 517.1 | 184.72ms | 98.73ms | 521.20ms | 2,123.4 µs (`1.1c`) | 35 / 42 MiB (1p) | 27 timeouts |
 | RustPython 0.6.0 (waitress 1w x 16t) | 322.0 | 302.66ms | 301.47ms | 341.95ms | 14,700.5 µs (`4.7c`) | 197 / 200 MiB (1p) | 0 |
-| **EPython 0.1.0 (waitress 1w x 16t)** | **305.8** | **318.60ms** | **318.68ms** | **387.61ms** | **44,082.9 µs** (`13.5c`) | 1,522 / 1,570 MiB (4p) | 0 |
+| **EPython 0.1.0 (waitress 1w x 16t)** | **277.4** | **350.80ms** | **349.71ms** | **427.03ms** | **24,942.4 µs** (`6.9c`) | 941 / 988 MiB (4p) | 0 |
 
 #### `GET /json/` (`wrk -t8 -c200 -d30s --latency`)
 
@@ -155,7 +155,7 @@ xychart-beta
 | CPython 3.13.6t FT (waitress 1w x 16t) | 9,814.4 | 10.23ms | 9.00ms | 23.09ms | 1,027.8 µs (`10.1c`) | 117 / 120 MiB (1p) | 0 |
 | CPython 3.13.6t FT (gunicorn 1w x 16t) | 7,708.2 | 28.35ms | 25.33ms | 55.14ms | 1,556.0 µs (`12.0c`) | 141 / 164 MiB (2p) | 0 |
 | RustPython 0.6.0 (waitress 1w x 16t) | 2,614.4 | 40.62ms | 34.25ms | 80.89ms | 3,371.0 µs (`8.8c`) | 163 / 165 MiB (1p) | 0 |
-| **EPython 0.1.0 (waitress 1w x 16t)** | **2,441.6** | **43.75ms** | **35.81ms** | **147.87ms** | **3,390.8 µs** (`8.3c`) | 2,374 / 2,423 MiB (4p) | 0 |
+| **EPython 0.1.0 (waitress 1w x 16t)** | **2,495.0** | **43.09ms** | **35.63ms** | **129.01ms** | **3,396.0 µs** (`8.5c`) | 2,175 / 2,223 MiB (4p) | 0 |
 | CPython 3.13.18 GIL (waitress 1w x 16t) | 2,141.2 | 48.55ms | 40.83ms | 96.02ms | 550.7 µs (`1.2c`) | 35 / 42 MiB (1p) | 0 |
 | CPython 3.13.18 GIL (gunicorn 1w x 16t) | 1,527.0 | 129.03ms | 128.20ms | 222.85ms | 825.5 µs (`1.3c`) | 47 / 68 MiB (2p) | 89 timeouts |
 
