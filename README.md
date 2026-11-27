@@ -5,7 +5,7 @@
 `EPython` runs Python `threading.Thread` workers and concurrent `asyncio` event loops across CPU cores with preemptive BEAM scheduling and shared in-memory state — without a Global Interpreter Lock or multi-process worker pools. It ships as a single self-contained binary with `pip` built in.
 
 > [!NOTE]
-> This project is under active development.
+> This project is under active development. Source code and a formal license are not yet published in this repository — pre-release standalone binaries (with `SHA256SUMS` checksums) are provided on [Releases](https://github.com/erlpython/epython/releases/latest) for evaluation and benchmarking.
 
 | Best fit | Not a fit |
 |---|---|
@@ -22,6 +22,7 @@ Download a standalone binary from [Releases](https://github.com/erlpython/epytho
 ```sh
 F=epython-0.1.0-linux-x86_64-standalone   # or linux-arm64 / macos-arm64 / macos-x86_64
 curl -LO "https://github.com/erlpython/epython/releases/download/v0.1.0/$F"
+# Optional: verify against SHA256SUMS from Releases before running
 chmod +x "$F" && mv "$F" ~/.local/bin/epython
 ```
 
@@ -32,13 +33,29 @@ epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 
 ---
 
+## How It Works on BEAM
+
+BEAM isolates processes and favors immutable data, so `EPython` bridges Python semantics onto Erlang/OTP in four layers:
+
+- **Tiered BEAM compilation:** Cold code starts in an Erlang interpreter; hot functions and loops compile dynamically via OTP into BEAM bytecode (JIT-compiled to native machine code by ERTS) and upgrade function objects in place.
+- **Python threads → BEAM processes:** Each `threading.Thread` runs as a lightweight, preemptively scheduled BEAM process across ERTS schedulers with no Global Interpreter Lock.
+- **Shared mutable state & locks:** Thread-local objects stay in the BEAM process dictionary with zero synchronization. Objects published across threads move to ETS tables and C NIF resources (reference-counted across processes by BEAM for GC reclamation), with per-scheduler striped atomics and native C hash tables/locks powering concurrent shared `dict`s and `threading.Lock`.
+- **`cp313` / `abi3` C extensions without `libpython`:** Native wheels (`*.so`) load through `EPython`'s own CPython 3.13 C API implementation (`libepycapi`), bridging BEAM processes to C runtime threads over an explicit job/upcall protocol.
+
+---
+
 ## C10K Multithreaded I/O Benchmark
 
 Identical, unmodified [`threaded_server.py`](threaded_server.py) and [`post.lua`](post.lua) run across all four interpreters under **10,000 concurrent keep-alive connections (`wrk -c10000`)**. On every `POST /items`, each `selectors` + `SO_REUSEPORT` worker thread parses JSON, computes a pure-Python FNV-1a hash, updates a 64-shard `threading.Lock` dict, and returns a JSON response.
 
 ### Summary
 
+> **Test environment:** `AMD EPYC 7B13` (**64 vCPUs** — 32 cores / 64 threads), `117 GiB` RAM, Debian GNU/Linux (`Linux 7.1.6`). Both `wrk` and the server ran **co-located on the same host over loopback (`127.0.0.1`)**. See [Test Machine](#test-machine) for full runtime and kernel details.
+
 Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server threads for `wrk -t16`, `-t24`, `-t32`, and `-t64` (**80 runs total, 0 socket errors, 0 non-2xx**). `EPython 0.1.0` wins throughput, `p50`, and CPU/req in **all 20 / 20** configurations — peaking at **505,087 req/s** (**+60.2%** over CPython 3.13.6t FT, **52.1×** CPython GIL, **69.5×** RustPython) and delivering **+67.3%** higher throughput with **9.9× lower `p99`** than CPython FT at `wrk -t64`, 50 threads.
+
+<details>
+<summary><strong>View summary table</strong></summary>
 
 | Interpreter | Peak Req/s | `wrk -t24`, 50t (`p50`) | `wrk -t64`, 50t | `p99` (`t64`, 50t) | CPU/req (`t24`, 50t) |
 |---|--:|--:|--:|--:|--:|
@@ -46,6 +63,8 @@ Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server thre
 | CPython 3.13.6t (FT) | 417,353 (`t16`, 40t) | 315,231 (`29.51ms`) | 293,681 | 696.03ms | 90.54 µs |
 | RustPython 0.6.0 | 31,792 (`t64`, 10t) | 7,272 (`1.37s`) | 7,422 | 1.59s | 1,530.31 µs |
 | CPython 3.13.18 (GIL) | 10,479 (`t64`, 10t) | 9,694 (`998.65ms`) | 9,909 | 1.41s | 141.71 µs |
+
+</details>
 
 <table>
 <tr>
@@ -210,6 +229,8 @@ xychart-beta
 
 <details>
 <summary><strong>View detailed numbers — wrk -t16 (10, 20, 30, 40, 50 server threads)</strong></summary>
+
+> **Note on `p99` at 30–50 server threads (`~400ms`):** Above ~`420k req/s`, `wrk -t16` saturates the load generator itself (`15.7 / 16` client threads pegged at `98%` CPU during the 40-thread run), stalling client event loops and inflating measured `p99` even while `p50` drops to `12–16ms`. Giving `wrk` enough threads (`-t24`, `-t32`, `-t64`) eliminates client saturation: `EPython` climbs to `505,087 req/s` and `p99` drops to `51–70ms`.
 
 #### 10 server threads (`wrk -t16 -c10000 -d30s`)
 
@@ -408,6 +429,18 @@ xychart-beta
 
 </details>
 
+### Multi-Process CPython Reference & Memory (50 Workers)
+
+In production, CPython GIL servers typically scale with **preforked worker processes** rather than 50 threads. For reference, we ran 50 preforked `CPython 3.13.18` processes (each running `threaded_server.worker_loop` over `SO_REUSEPORT` at `-c10000 -d30s`) and measured steady-state memory (`PSS` via `/proc/*/smaps_rollup` and sum of `RSS`) under load:
+
+| Runtime (50 workers) | Shared in-memory state | `wrk -t24` Req/s (`p50` / `p99`) | `wrk -t64` Req/s (`p99`) | CPU/req (`t24`) | Steady Memory (`PSS` / `RSS`) |
+|---|:-:|--:|--:|--:|--:|
+| **EPython 0.1.0 (50 threads)** | **Yes** | **505,087** (`13.39ms` / `107.89ms`) | **491,233** (`70.60ms`) | **61.49 µs** | 948 MiB / 994 MiB |
+| CPython 3.13.6t FT (50 threads) | Yes | 315,231 (`29.51ms` / `573.72ms`) | 293,681 (`696.03ms`) | 90.54 µs | 226 MiB / 229 MiB |
+| CPython 3.13.18 (50 prefork procs) | **No** *(50 isolated copies)* | 512,067 (`8.93ms` / `32.62ms`) | 555,031 (`61.34ms`) | 65.34 µs | 207 MiB / 657 MiB *(51 procs)* |
+
+`EPython 0.1.0` matches **multi-process-class throughput** (`505k` vs. `512k req/s` at `-t24`, with lower CPU/req: `61.49` vs. `65.34 µs`) inside a **single process with true shared mutable state** — whereas 50 preforked CPython workers split `SHARDS` into 50 independent dicts (sharing state requires Redis/IPC/serialization). On this minimal stdlib-only server, BEAM's 50-thread heap/runtime footprint is larger (`948 MiB` PSS vs. `207 MiB` CoW-shared PSS / `657 MiB` total RSS for preforked CPython); `EPython`'s memory advantage applies when services hold large mutable in-memory caches, state, or loaded models that would otherwise be replicated per process.
+
 ### Reproduce
 
 **macOS:**
@@ -467,5 +500,6 @@ Selected `pyperformance 1.14.0` benchmarks at **8 threads** (time/op, lower is f
 | **Cache** | 1 MiB L1d, 1 MiB L1i, 16 MiB L2, 128 MiB L3 |
 | **Memory** | 117 GiB RAM |
 | **OS / Kernel** | Debian GNU/Linux, Linux 7.1.6 (`x86_64`, `SMP PREEMPT_DYNAMIC`) |
+| **Topology** | Server and `wrk` co-located on the same host over loopback (`127.0.0.1`) |
 | **Runtimes** | `EPython 0.1.0` (Erlang/OTP 29, ERTS 17.0.4), `CPython 3.13.18`, `CPython 3.13.6t` (free-threaded), `RustPython 0.6.0` (`rustc 1.100.0`) |
 | **Kernel TCP** | `somaxconn=4096`, `tcp_max_syn_backlog=4096`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1` |
