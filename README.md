@@ -6,6 +6,48 @@
 >
 > **Trade-off:** `EPython` is slower than CPython on single-threaded, compute-heavy, sequential, or single-loop `asyncio` workloads. Its strength is concurrent multithreaded I/O (`threading.Thread` handling high-concurrency I/O with shared state across many cores).
 
+## Install
+
+Download the binary for your machine from [Releases](https://github.com/erlpython/epython/releases/latest). Each one is a single executable that carries its own Erlang runtime, OpenSSL and native libraries: no Erlang, CPython or anything else needs to be installed.
+
+| Machine | File |
+|---|---|
+| Linux x86_64 | `epython-0.1.0-linux-x86_64-standalone` |
+| Linux arm64 (aarch64) | `epython-0.1.0-linux-arm64-standalone` |
+| macOS, Apple Silicon | `epython-0.1.0-macos-arm64-standalone` |
+| macOS, Intel | `epython-0.1.0-macos-x86_64-standalone` |
+
+```sh
+# Pick the file for your machine (here Linux x86_64).
+F=epython-0.1.0-linux-x86_64-standalone
+curl -LO https://github.com/erlpython/epython/releases/download/v0.1.0/$F
+curl -LO https://github.com/erlpython/epython/releases/download/v0.1.0/SHA256SUMS
+grep "$F" SHA256SUMS | sha256sum -c -     # macOS: grep "$F" SHA256SUMS | shasum -a 256 -c -
+
+chmod +x "$F"
+mkdir -p ~/.local/bin && mv "$F" ~/.local/bin/epython   # or /usr/local/bin/epython
+epython -c 'import sys; print(sys.version)'
+```
+
+The first run unpacks the binary into `~/.cache/epython/standalone/` (about 50 MB, about a second; set `EPY_STANDALONE_CACHE` to put it elsewhere). Later runs start from there.
+
+### Use
+
+```sh
+epython script.py                      # run a program
+epython -c 'print("hello")'            # run a string
+epython                                # interactive prompt
+epython -m pip install fastapi httpx   # install packages (pip is built in)
+epython -m pip list
+```
+
+`epython -m pip` needs no CPython or separate pip: it installs pure-Python and `cp313`/`abi3` wheels from PyPI into `~/.local/share/epython/site-packages` (set `EPY_SITE` to change it). C extension modules load through epython's own implementation of the CPython C API.
+
+### Requirements
+
+- **Linux:** glibc 2.38 or newer (for example Ubuntu 24.04+, Debian 13+, Fedora 39+). musl distributions (Alpine) aren't supported.
+- **macOS:** Apple Silicon builds need macOS 26 or newer; Intel builds need macOS 13 or newer. A binary downloaded with a browser may be blocked by Gatekeeper: run `xattr -d com.apple.quarantine epython` once (files fetched with `curl` aren't affected).
+
 ## C10K Multithreaded I/O Benchmark
 
 [`threaded_server.py`](threaded_server.py) + [`post.lua`](post.lua): multithreaded `selectors` + `SO_REUSEPORT` HTTP server that parses JSON, computes a pure-Python FNV-1a hash, and updates a 64-shard locked dict on every `POST /items`.
