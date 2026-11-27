@@ -8,7 +8,7 @@
 
 ## C10K Multithreaded I/O Benchmark
 
-[`threaded_server.py`](threaded_server.py) — multithreaded `threading.Thread` + `selectors` (`EpollSelector` / `KqueueSelector`) + `SO_REUSEPORT` non-blocking HTTP server driven by [`post.lua`](post.lua) (`POST /items`). Each request parses HTTP headers and JSON, computes a pure-Python FNV-1a hash, updates a 64-shard shared-memory dict (`SHARDS`, 200 items/shard with `threading.Lock`), and returns JSON.
+[`threaded_server.py`](threaded_server.py) + [`post.lua`](post.lua): multithreaded `selectors` + `SO_REUSEPORT` HTTP server that parses JSON, computes a pure-Python FNV-1a hash, and updates a 64-shard locked dict on every `POST /items`.
 
 ### Results
 
@@ -75,60 +75,46 @@ Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPytho
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | 183,293 | 55.02ms | 50.46ms | 111.86ms | 410.70ms | 25.92 / 25.25 / 51.17 µs |
-| **CPython 3.13.6t (FT)** | 171,193 | 58.00ms | 54.64ms | 85.20ms | 170.67ms | 35.51 / 22.85 / 58.36 µs |
-| **RustPython 0.6.0** | 31,548 | 313.45ms | 310.02ms | 558.63ms | 676.07ms | 212.57 / 77.46 / 290.03 µs |
-| **CPython 3.13.18 (GIL)** | 9,909 | 986.98ms | 974.89ms | 1.44s | 1.86s | 68.37 / 68.33 / 136.71 µs |
+| **EPython 0.1.0** | **183,293** | **55.02ms** | **50.46ms** | **111.86ms** | **410.70ms** | **25.92 / 25.25 / 51.17 µs** |
+| CPython 3.13.6t (FT) | 171,193 | 58.00ms | 54.64ms | 85.20ms | 170.67ms | 35.51 / 22.85 / 58.36 µs |
+| RustPython 0.6.0 | 31,548 | 313.45ms | 310.02ms | 558.63ms | 676.07ms | 212.57 / 77.46 / 290.03 µs |
+| CPython 3.13.18 (GIL) | 9,909 | 986.98ms | 974.89ms | 1.44s | 1.86s | 68.37 / 68.33 / 136.71 µs |
 
 #### 20 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | 327,172 | 30.53ms | 28.47ms | 65.75ms | 294.58ms | 29.40 / 24.29 / 53.69 µs |
-| **CPython 3.13.6t (FT)** | 286,849 | 34.63ms | 33.56ms | 55.86ms | 140.98ms | 45.25 / 24.35 / 69.60 µs |
-| **RustPython 0.6.0** | 15,829 | 621.87ms | 625.85ms | 713.43ms | 1.15s | 402.02 / 375.15 / 777.17 µs |
-| **CPython 3.13.18 (GIL)** | 9,726 | 1.01s | 991.63ms | 1.39s | 2.26s | 69.45 / 70.65 / 140.09 µs |
+| **EPython 0.1.0** | **327,172** | **30.53ms** | **28.47ms** | **65.75ms** | **294.58ms** | **29.40 / 24.29 / 53.69 µs** |
+| CPython 3.13.6t (FT) | 286,849 | 34.63ms | 33.56ms | 55.86ms | 140.98ms | 45.25 / 24.35 / 69.60 µs |
+| RustPython 0.6.0 | 15,829 | 621.87ms | 625.85ms | 713.43ms | 1.15s | 402.02 / 375.15 / 777.17 µs |
+| CPython 3.13.18 (GIL) | 9,726 | 1.01s | 991.63ms | 1.39s | 2.26s | 69.45 / 70.65 / 140.09 µs |
 
 #### 30 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | 427,601 | 33.99ms | 16.21ms | 397.84ms | 532.47ms | 32.11 / 24.80 / 56.91 µs |
-| **CPython 3.13.6t (FT)** | 359,254 | 27.46ms | 26.35ms | 54.78ms | 119.59ms | 53.71 / 25.29 / 78.99 µs |
-| **CPython 3.13.18 (GIL)** | 9,712 | 1.01s | 998.53ms | 1.44s | 2.13s | 68.69 / 71.78 / 140.46 µs |
-| **RustPython 0.6.0** | 8,500 | 1.15s | 1.15s | 1.35s | 2.54s | 554.07 / 733.87 / 1,287.93 µs |
+| **EPython 0.1.0** | **427,601** | **33.99ms** | **16.21ms** | **397.84ms** | **532.47ms** | **32.11 / 24.80 / 56.91 µs** |
+| CPython 3.13.6t (FT) | 359,254 | 27.46ms | 26.35ms | 54.78ms | 119.59ms | 53.71 / 25.29 / 78.99 µs |
+| CPython 3.13.18 (GIL) | 9,712 | 1.01s | 998.53ms | 1.44s | 2.13s | 68.69 / 71.78 / 140.46 µs |
+| RustPython 0.6.0 | 8,500 | 1.15s | 1.15s | 1.35s | 2.54s | 554.07 / 733.87 / 1,287.93 µs |
 
 #### 40 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | 432,361 | 45.67ms | 12.93ms | 419.68ms | 532.17ms | 30.57 / 25.60 / 56.18 µs |
-| **CPython 3.13.6t (FT)** | 417,353 | 25.43ms | 19.04ms | 306.35ms | 674.89ms | 66.26 / 26.60 / 92.85 µs |
-| **CPython 3.13.18 (GIL)** | 9,656 | 1.01s | 1.00s | 1.43s | 2.42s | 69.38 / 72.49 / 141.87 µs |
-| **RustPython 0.6.0** | 7,597 | 1.28s | 1.29s | 1.52s | 2.76s | 616.71 / 816.06 / 1,432.77 µs |
+| **EPython 0.1.0** | **432,361** | **45.67ms** | **12.93ms** | **419.68ms** | **532.17ms** | **30.57 / 25.60 / 56.18 µs** |
+| CPython 3.13.6t (FT) | 417,353 | 25.43ms | 19.04ms | 306.35ms | 674.89ms | 66.26 / 26.60 / 92.85 µs |
+| CPython 3.13.18 (GIL) | 9,656 | 1.01s | 1.00s | 1.43s | 2.42s | 69.38 / 72.49 / 141.87 µs |
+| RustPython 0.6.0 | 7,597 | 1.28s | 1.29s | 1.52s | 2.76s | 616.71 / 816.06 / 1,432.77 µs |
 
 #### 50 server threads (`wrk -t16 -c10000 -d30s`)
 
 | Interpreter | Req/s | Avg | p50 | p99 | Max | Steady CPU/req (user / sys / total) |
 |---|--:|--:|--:|--:|--:|--:|
-| **EPython 0.1.0** | 409,928 | 45.82ms | 12.09ms | 403.49ms | 537.23ms | 31.52 / 26.47 / 57.99 µs |
-| **CPython 3.13.6t (FT)** | 342,737 | 45.69ms | 26.05ms | 779.68ms | 1.16s | 63.48 / 28.00 / 91.49 µs |
-| **CPython 3.13.18 (GIL)** | 9,682 | 1.01s | 1.00s | 1.41s | 2.22s | 68.34 / 73.76 / 142.10 µs |
-| **RustPython 0.6.0** | 7,101 | 1.37s | 1.37s | 1.61s | 2.89s | 679.88 / 886.66 / 1,566.54 µs |
-
-</details>
-
-<details>
-<summary><strong>Test machine &amp; runtimes</strong></summary>
-
-| Spec | Value |
-|---|---|
-| **CPU** | AMD EPYC 7B13 (1 socket, 32 cores / 64 threads, x86_64) |
-| **Cache** | 1 MiB L1d, 1 MiB L1i, 16 MiB L2, 128 MiB L3 |
-| **Memory** | 117 GiB RAM |
-| **OS / Kernel** | Debian GNU/Linux, Linux 7.1.6 (`x86_64`, `SMP PREEMPT_DYNAMIC`) |
-| **Runtimes** | `EPython 0.1.0` (Erlang/OTP 29, ERTS 17.0.4), `CPython 3.13.18`, `CPython 3.13.6t` (free-threaded), `RustPython 0.6.0` (`rustc 1.100.0`) |
-| **Kernel TCP** | `somaxconn=4096`, `tcp_max_syn_backlog=4096`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1` |
+| **EPython 0.1.0** | **409,928** | **45.82ms** | **12.09ms** | **403.49ms** | **537.23ms** | **31.52 / 26.47 / 57.99 µs** |
+| CPython 3.13.6t (FT) | 342,737 | 45.69ms | 26.05ms | 779.68ms | 1.16s | 63.48 / 28.00 / 91.49 µs |
+| CPython 3.13.18 (GIL) | 9,682 | 1.01s | 1.00s | 1.41s | 2.22s | 68.34 / 73.76 / 142.10 µs |
+| RustPython 0.6.0 | 7,101 | 1.37s | 1.37s | 1.61s | 2.89s | 679.88 / 886.66 / 1,566.54 µs |
 
 </details>
 
@@ -161,3 +147,14 @@ ulimit -n 65536 && wrk -t16 -c10000 -d30s --timeout 5s --latency -s post.lua htt
 ```
 
 No `Socket errors:` line means all 10,000 connections completed cleanly with 0 errors.
+
+### Machine
+
+| Spec | Value |
+|---|---|
+| **CPU** | AMD EPYC 7B13 (1 socket, 32 cores / 64 threads, x86_64) |
+| **Cache** | 1 MiB L1d, 1 MiB L1i, 16 MiB L2, 128 MiB L3 |
+| **Memory** | 117 GiB RAM |
+| **OS / Kernel** | Debian GNU/Linux, Linux 7.1.6 (`x86_64`, `SMP PREEMPT_DYNAMIC`) |
+| **Runtimes** | `EPython 0.1.0` (Erlang/OTP 29, ERTS 17.0.4), `CPython 3.13.18`, `CPython 3.13.6t` (free-threaded), `RustPython 0.6.0` (`rustc 1.100.0`) |
+| **Kernel TCP** | `somaxconn=4096`, `tcp_max_syn_backlog=4096`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1` |
