@@ -21,7 +21,7 @@ Strictly sequential 30s runs at `-c10000` across 10, 20, 30, 40, and 50 server t
 config:
   themeVariables:
     xyChart:
-      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
     title "POST /items (wrk -t16) — Throughput by Server Threads (Req/s, higher is better)"
@@ -32,7 +32,7 @@ xychart-beta
     line [9909, 9726, 9712, 9656, 9682]
     line [31548, 15829, 8500, 7597, 7101]
 ```
-Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
+Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
 <summary><strong>View detailed numbers — wrk -t16 (10, 20, 30, 40, 50 server threads)</strong></summary>
@@ -91,7 +91,7 @@ Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPytho
 config:
   themeVariables:
     xyChart:
-      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
     title "POST /items (wrk -t24) — Throughput by Server Threads (Req/s, higher is better)"
@@ -102,7 +102,7 @@ xychart-beta
     line [10398, 9926, 9699, 9749, 9694]
     line [31543, 15186, 8727, 7794, 7272]
 ```
-Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
+Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
 <summary><strong>View detailed numbers — wrk -t24 (10, 20, 30, 40, 50 server threads)</strong></summary>
@@ -161,7 +161,7 @@ Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPytho
 config:
   themeVariables:
     xyChart:
-      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
     title "POST /items (wrk -t32) — Throughput by Server Threads (Req/s, higher is better)"
@@ -172,7 +172,7 @@ xychart-beta
     line [10449, 9926, 9869, 9755, 9731]
     line [31577, 15961, 8610, 7934, 7433]
 ```
-Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
+Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
 <summary><strong>View detailed numbers — wrk -t32 (10, 20, 30, 40, 50 server threads)</strong></summary>
@@ -231,7 +231,7 @@ Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPytho
 config:
   themeVariables:
     xyChart:
-      plotColorPalette: "#ea580c, #16a34a, #2563eb, #9333ea"
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
     title "POST /items (wrk -t64) — Throughput by Server Threads (Req/s, higher is better)"
@@ -242,7 +242,7 @@ xychart-beta
     line [10479, 9984, 10000, 9785, 9909]
     line [31792, 15965, 8753, 7760, 7422]
 ```
-Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPython 3.13.18 (GIL)** · 🟪 **RustPython 0.6.0**
+Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
 <summary><strong>View detailed numbers — wrk -t64 (10, 20, 30, 40, 50 server threads)</strong></summary>
