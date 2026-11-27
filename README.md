@@ -1,28 +1,27 @@
 # EPython
 
-**A GIL-free Python 3.13 interpreter built on Erlang/OTP's BEAM VM, tailored specifically for high-concurrency network servers.**
+**A GIL-free Python 3.13 interpreter on Erlang/OTP's BEAM VM — built to be the de facto Python runtime for high-concurrency network servers.**
 
-`EPython` runs Python `threading.Thread` workers and concurrent `asyncio` event loops across CPU cores with preemptive BEAM scheduling and shared in-memory state — without a Global Interpreter Lock or multi-process worker pools. It ships as a single self-contained binary with `pip` built in.
+`EPython` scales unmodified Python `threading.Thread`, `multiprocessing.Process`, and `asyncio` network code across CPU cores with preemptive BEAM scheduling and zero GIL — shipped as a single self-contained binary with `pip` built in.
 
 > [!NOTE]
-> This project is under active development. Source code and a formal license are not yet published in this repository — pre-release standalone binaries (with `SHA256SUMS` checksums) are provided on [Releases](https://github.com/erlpython/epython/releases/latest) for evaluation and benchmarking.
+> Under active development. Pre-release standalone binaries (with `SHA256SUMS`) are published on [Releases](https://github.com/erlpython/epython/releases/latest) for evaluation and benchmarking.
 
 | Best fit | Not a fit |
 |---|---|
-| High-concurrency HTTP & socket servers (`threading.Thread` + `selectors`) | Single-threaded CLI scripts and sequential batch jobs |
-| JSON APIs, serialization, and concurrent streaming (`asyncio` / async generators) | CPU-bound pure-Python compute (OOP, numeric, regex/parsing loops) |
-| Multi-core services sharing mutable in-memory state across threads | Drop-in speedups for general-purpose CPython scripts |
+| High-concurrency HTTP & socket servers (`selectors`, `threading`, `multiprocessing`) | Single-threaded CLI scripts and sequential batch jobs |
+| JSON APIs, serialization, and concurrent streaming (`asyncio` / async generators) | CPU-bound pure-Python compute (OOP frameworks, numeric, parsing loops) |
+| Multi-core network services sharing in-memory state across threads | Drop-in speedups for general-purpose CPython scripts |
 
 ---
 
 ## Install
 
-Download a standalone binary from [Releases](https://github.com/erlpython/epython/releases/latest) (Linux `x86_64`/`arm64`, macOS `arm64`/`x86_64` — bundles Erlang/OTP, OpenSSL, and built-in `pip`):
+Download a standalone binary from [Releases](https://github.com/erlpython/epython/releases/latest) (Linux `x86_64`/`arm64`, macOS `arm64`/`x86_64` — bundles Erlang/OTP, OpenSSL, and `pip`):
 
 ```sh
 F=epython-0.1.0-linux-x86_64-standalone   # or linux-arm64 / macos-arm64 / macos-x86_64
 curl -LO "https://github.com/erlpython/epython/releases/download/v0.1.0/$F"
-# Optional: verify against SHA256SUMS from Releases before running
 chmod +x "$F" && mv "$F" ~/.local/bin/epython
 ```
 
@@ -33,29 +32,11 @@ epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 
 ---
 
-## How It Works on BEAM
-
-BEAM isolates processes and favors immutable data, so `EPython` bridges Python semantics onto Erlang/OTP in four layers:
-
-- **Tiered BEAM compilation:** Cold code starts in an Erlang interpreter; hot functions and loops compile dynamically via OTP into BEAM bytecode (JIT-compiled to native machine code by ERTS) and upgrade function objects in place.
-- **Python threads → BEAM processes:** Each `threading.Thread` runs as a lightweight, preemptively scheduled BEAM process across ERTS schedulers with no Global Interpreter Lock.
-- **Shared mutable state & locks:** Thread-local objects stay in the BEAM process dictionary with zero synchronization. Objects published across threads move to ETS tables and C NIF resources (reference-counted across processes by BEAM for GC reclamation), with per-scheduler striped atomics and native C hash tables/locks powering concurrent shared `dict`s and `threading.Lock`.
-- **`cp313` / `abi3` C extensions without `libpython`:** Native wheels (`*.so`) load through `EPython`'s own CPython 3.13 C API implementation (`libepycapi`), bridging BEAM processes to C runtime threads over an explicit job/upcall protocol.
-
----
-
 ## Django Benchmark
 
-[`django_server.py`](django_server.py) runs an unmodified `Django 6.1.3` WSGI application exposing two endpoints — `/template/` (rendering a 50-item HTML list via Django's template engine) and `/json/` (`JsonResponse` with 10 items) — warmed up with `wrk -t4 -c100 -d5s` and measured with `wrk -t8 -c200 -d30s --latency`.
+[`django_server.py`](django_server.py) (`Django 6.1.3`, `wrk -t8 -c200 -d30s --latency` over loopback; see [Test Machine](#test-machine)). All four interpreters ran on `waitress 3.0.2` (`1w × 16t`, no `os.fork()`), with CPython `gunicorn 27.0.1` (`1w × 16t` and `16w` prefork) as reference baselines.
 
-> **Test environment:** `AMD EPYC 7B13` (**64 vCPUs** — 32 cores / 64 threads), `117 GiB` RAM, Debian GNU/Linux (`Linux 7.1.6`). Both `wrk` and the server ran **co-located on the same host over loopback (`127.0.0.1`)**. See [Test Machine](#test-machine) for full runtime and kernel details.
-
-### Summary
-
-- **Django is currently not a fit for `EPython 0.1.0`.** Django's template engine, `Context` stack, `SafeString` subclasses, and middleware/URL-resolver dispatch are heavily CPU-bound pure-Python OOP — where CPython 3.13's specializing interpreter is much faster per thread (`0.47ms` vs `6.39ms` single-threaded on `template_view`).
-- **`CPython 3.13.18 (GIL)` with `gunicorn --workers 16` prefork** leads by a wide margin (**`15,480 req/s`** on `/template/`, **`31,933 req/s`** on `/json/`). In single-process multithreaded mode (`1w × 16t`), **`CPython 3.13.6t (FT)`** leads (`1,542 req/s` `/template/`, `9,814 req/s` `/json/`).
-- **`EPython 0.1.0`** (`waitress`, `1w × 16t`) delivers **`2,495 req/s`** on `/json/` (ahead of single-process threaded `CPython 3.13.18 GIL` at `2,141 req/s` with `waitress` / `1,527 req/s` with `gunicorn`, and with **0** timeouts vs `27–122` timeouts on GIL) and **`277 req/s`** on `/template/` (`6.9` cores, `941 MiB` PSS — serialized by `asgiref.local._DefaultLocal`'s global `RLock`, which also limits `CPython 3.13.6t FT` to `1,461–1,542 req/s` vs `15,480 req/s` prefork).
-- **WSGI server note:** `gunicorn` calls POSIX `os.fork()` unconditionally in `arbiter.py` (even with `--workers 1 --worker-class gthread`), so it does not run on `EPython 0.1.0` (BEAM is a multi-threaded VM without `os.fork()`) and fails on `RustPython 0.6.0` (`os.utime(fd)` `TypeError`). To compare all four interpreters apples-to-apples on the same WSGI server, all four were benchmarked with pure-Python `waitress 3.0.2` (`1w × 16t`), alongside the `gunicorn 27.0.1` (`gthread` and `16w` prefork) CPython baselines.
+Django's template/middleware layer is CPU-bound pure-Python OOP rather than network I/O: CPython `gunicorn 16w` prefork leads (`15,480` `/template/`, `31,933` `/json/`), and CPython FT leads `1w × 16t` (`1,461` / `9,814`). On `/json/`, `EPython` reaches **2,495 req/s** with `0` errors (ahead of threaded CPython GIL `2,141` / `1,527`); on `/template/` it reaches **277 req/s**.
 
 <table>
 <tr>
@@ -133,7 +114,7 @@ xychart-beta
 </table>
 
 <details>
-<summary><strong>View Django benchmark tables — /template/ and /json/ (Waitress 16t + Gunicorn baselines)</strong></summary>
+<summary><strong>View Django numbers &amp; reproduce commands</strong></summary>
 
 #### `GET /template/` (`wrk -t8 -c200 -d30s --latency`)
 
@@ -159,49 +140,29 @@ xychart-beta
 | CPython 3.13.18 GIL (waitress 1w x 16t) | 2,141.2 | 48.55ms | 40.83ms | 96.02ms | 550.7 µs (`1.2c`) | 35 / 42 MiB (1p) | 0 |
 | CPython 3.13.18 GIL (gunicorn 1w x 16t) | 1,527.0 | 129.03ms | 128.20ms | 222.85ms | 825.5 µs (`1.3c`) | 47 / 68 MiB (2p) | 89 timeouts |
 
-</details>
-
-### Reproduce
+#### Reproduce
 
 ```sh
-# Install dependencies (use the target interpreter's pip)
 epython -m pip install django waitress
-python3 -m pip install django waitress gunicorn
-
-# 1. Multithreaded WSGI without os.fork() (EPython / CPython 3.13t / CPython 3.13 / RustPython)
 epython -m waitress --host=127.0.0.1 --port=8000 --threads=16 django_server:application
 
-# 2. CPython 3.13t (FT) Gunicorn — 1 process, 16 threads
-python3.13t -m gunicorn django_server:application \
-  --workers 1 --threads 16 --worker-class gthread \
-  --bind 127.0.0.1:8000 --log-level warning
+# CPython Gunicorn baselines (1w x 16t gthread / 16w prefork)
+python3.13t -m gunicorn django_server:application --workers 1 --threads 16 --worker-class gthread --bind 127.0.0.1:8000 --log-level warning
+python3 -m gunicorn django_server:application --workers 16 --bind 127.0.0.1:8000 --log-level warning
 
-# 3. CPython 3.13 (GIL) Gunicorn threaded baseline — 1 process, 16 threads
-python3 -m gunicorn django_server:application \
-  --workers 1 --threads 16 --worker-class gthread \
-  --bind 127.0.0.1:8000 --log-level warning
-
-# 4. CPython 3.13 (GIL) Gunicorn production baseline — 16 processes, 1 thread each
-python3 -m gunicorn django_server:application \
-  --workers 16 --bind 127.0.0.1:8000 --log-level warning
-
-# Warmup & measure (/template/ and /json/)
-wrk -t4 -c100 -d5s http://127.0.0.1:8000/template/
-wrk -t8 -c200 -d30s --latency http://127.0.0.1:8000/template/
-
-wrk -t4 -c100 -d5s http://127.0.0.1:8000/json/
-wrk -t8 -c200 -d30s --latency http://127.0.0.1:8000/json/
+# Warmup & measure (/template/ or /json/)
+wrk -t4 -c100 -d5s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d30s --latency http://127.0.0.1:8000/json/
 ```
+
+</details>
 
 ---
 
 ## C10K Multiprocess I/O Benchmark
 
-Identical, unmodified [`multiprocess_server.py`](multiprocess_server.py) and [`post.lua`](post.lua) run across all four interpreters under **10,000 concurrent keep-alive connections (`wrk -c10000`)** with **zero CLI flags**. Each `multiprocessing.Process` worker runs a `selectors` + `SO_REUSEPORT` loop that parses JSON, computes a pure-Python FNV-1a hash, updates a per-worker 64-shard dict (no lock needed), and returns a JSON response. CPython and RustPython spawn `N` separate OS worker processes (`N+1` to `N+3` OS procs total); `EPython` runs all `N` `multiprocessing.Process` workers as isolated BEAM processes inside a single VM.
+Unmodified [`multiprocess_server.py`](multiprocess_server.py) + [`post.lua`](post.lua) at **10,000 concurrent keep-alive connections (`wrk -c10000`)** with **zero CLI flags** (`selectors` + `SO_REUSEPORT` `multiprocessing.Process` workers parsing JSON, FNV-1a hashing, updating a per-worker 64-shard dict, and returning JSON).
 
-### Summary
-
-Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server workers for `wrk -t16`, `-t24`, `-t32`, and `-t64` (**80 runs total, 0 socket errors, 0 non-2xx**). `EPython 0.1.0` wins throughput in **17 / 20** configurations (sweeping **`wrk -t32` 5 / 5** and **`wrk -t64` 5 / 5**, and winning Peak Req/s in all **4 / 4** `wrk` thread counts) and wins CPU/req in **18 / 20** configurations — peaking at **631,105 req/s** (`t32`, 50w: **+4.7%** over 50-process CPython 3.13.18 GIL, **+6.5%** over 50-process CPython 3.13.6t FT, **2.64×** RustPython) and **587,823 req/s** at `t64`, 50w (**+7.9%** over CPython GIL, **+8.0%** over CPython FT, **15.7% lower CPU/req** than CPython GIL). On this minimal stdlib-only server, BEAM's per-worker heap footprint is larger than copy-on-write preforked CPython (`621–2,343 MiB` PSS vs. `77–229 MiB` PSS / `159–722 MiB` total RSS across 51 OS procs).
+80 sequential 30s runs (`10–50` workers × `wrk -t16/-t24/-t32/-t64`, **0 errors**): `EPython 0.1.0` wins throughput in **17 / 20** configs (sweeping `-t32` and `-t64` 5/5) and CPU/req in **18 / 20** — peaking at **631,105 req/s** (`+4.7%` vs. CPython GIL, `+6.5%` vs. CPython FT, `2.64×` RustPython) and **587,823 req/s** at `-t64`, 50w (`+7.9%` vs. GIL, `15.7%` lower CPU/req).
 
 <details>
 <summary><strong>View summary table</strong></summary>
@@ -592,13 +553,9 @@ ulimit -n 65536 && wrk -t32 -c10000 -d30s --timeout 5s --latency -s post.lua htt
 
 ## C10K Multithreaded I/O Benchmark
 
-Identical, unmodified [`threaded_server.py`](threaded_server.py) and [`post.lua`](post.lua) run across all four interpreters under **10,000 concurrent keep-alive connections (`wrk -c10000`)**. On every `POST /items`, each `selectors` + `SO_REUSEPORT` worker thread parses JSON, computes a pure-Python FNV-1a hash, updates a 64-shard `threading.Lock` dict, and returns a JSON response.
+Unmodified [`threaded_server.py`](threaded_server.py) + [`post.lua`](post.lua) at **10,000 concurrent keep-alive connections (`wrk -c10000`)** (`selectors` + `SO_REUSEPORT` `threading.Thread` workers sharing a 64-shard `threading.Lock` dict).
 
-### Summary
-
-> **Test environment:** `AMD EPYC 7B13` (**64 vCPUs** — 32 cores / 64 threads), `117 GiB` RAM, Debian GNU/Linux (`Linux 7.1.6`). Both `wrk` and the server ran **co-located on the same host over loopback (`127.0.0.1`)**. See [Test Machine](#test-machine) for full runtime and kernel details.
-
-Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server threads for `wrk -t16`, `-t24`, `-t32`, and `-t64` (**80 runs total, 0 socket errors, 0 non-2xx**). `EPython 0.1.0` wins throughput, `p50`, and CPU/req in **all 20 / 20** configurations — peaking at **505,087 req/s** (**+60.2%** over CPython 3.13.6t FT, **52.1×** CPython GIL, **69.5×** RustPython) and delivering **+67.3%** higher throughput with **9.9× lower `p99`** than CPython FT at `wrk -t64`, 50 threads.
+80 sequential 30s runs (`10–50` threads × `wrk -t16/-t24/-t32/-t64`, **0 errors**): `EPython 0.1.0` wins throughput, `p50`, and CPU/req in **all 20 / 20** configs — peaking at **505,087 req/s** (`+60.2%` vs. CPython FT, `52.1×` CPython GIL, `69.5×` RustPython) and delivering **+67.3%** higher throughput with **9.9× lower `p99`** than CPython FT at `-t64`, 50t.
 
 <details>
 <summary><strong>View summary table</strong></summary>
