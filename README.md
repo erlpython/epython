@@ -19,12 +19,14 @@ Strictly sequential 30s runs at `-c10000` across 10, 20, 30, 40, and 50 server t
 ```mermaid
 ---
 config:
+  xyChart:
+    titleFontSize: 14
   themeVariables:
     xyChart:
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
-    title "POST /items (wrk -t16) — Throughput by Server Threads (Req/s, higher is better)"
+    title "POST /items (wrk -t16) — Throughput (Req/s)"
     x-axis "Server Threads" ["10", "20", "30", "40", "50"]
     y-axis "Req/s" 0 --> 460000
     line [183293, 327172, 427601, 432361, 409928]
@@ -89,12 +91,14 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 ```mermaid
 ---
 config:
+  xyChart:
+    titleFontSize: 14
   themeVariables:
     xyChart:
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
-    title "POST /items (wrk -t24) — Throughput by Server Threads (Req/s, higher is better)"
+    title "POST /items (wrk -t24) — Throughput (Req/s)"
     x-axis "Server Threads" ["10", "20", "30", "40", "50"]
     y-axis "Req/s" 0 --> 520000
     line [194391, 331119, 421401, 477779, 505087]
@@ -159,12 +163,14 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 ```mermaid
 ---
 config:
+  xyChart:
+    titleFontSize: 14
   themeVariables:
     xyChart:
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
-    title "POST /items (wrk -t32) — Throughput by Server Threads (Req/s, higher is better)"
+    title "POST /items (wrk -t32) — Throughput (Req/s)"
     x-axis "Server Threads" ["10", "20", "30", "40", "50"]
     y-axis "Req/s" 0 --> 480000
     line [184046, 321100, 431185, 430525, 453398]
@@ -229,12 +235,14 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 ```mermaid
 ---
 config:
+  xyChart:
+    titleFontSize: 14
   themeVariables:
     xyChart:
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
-    title "POST /items (wrk -t64) — Throughput by Server Threads (Req/s, higher is better)"
+    title "POST /items (wrk -t64) — Throughput (Req/s)"
     x-axis "Server Threads" ["10", "20", "30", "40", "50"]
     y-axis "Req/s" 0 --> 520000
     line [177588, 318483, 431137, 491831, 491233]
