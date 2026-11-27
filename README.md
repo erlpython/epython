@@ -1,10 +1,10 @@
 # EPython
 
-**A GIL-free Python interpreter powered by Erlang/OTP's BEAM VM — built to shine on multithreaded I/O workloads.** `EPython` runs Python `threading.Thread` workers concurrently across CPU cores with preemptive scheduling, sharing in-memory Python state across threads without a Global Interpreter Lock or multi-process workers.
+**A GIL-free Python interpreter built on Erlang/OTP's BEAM VM, tailored specifically for high-concurrency network servers.** `EPython` runs Python `threading.Thread` workers and concurrent `asyncio` loops across CPU cores with preemptive BEAM scheduling and shared in-memory state — without a Global Interpreter Lock or multi-process workers.
 
 > **Status:** This project is under active development.
 >
-> **Trade-off:** `EPython` is slower than CPython on single-threaded, compute-heavy, sequential, or single-loop `asyncio` workloads. Its strength is concurrent multithreaded I/O (`threading.Thread` handling high-concurrency I/O with shared state across many cores).
+> **Scope & trade-off:** `EPython` is designed for concurrent server workloads (high-concurrency HTTP/socket I/O, JSON serialization, multithreaded request handling, and concurrent async tasks). It is **not** a general-purpose replacement for CPython — single-threaded scripts and CPU-heavy pure-Python compute (OOP/numeric/parsing loops) are significantly slower than CPython.
 
 ## Install
 
@@ -56,19 +56,23 @@ epython -m pip list
 
 Strictly sequential 30s runs at `-c10000` across 10, 20, 30, 40, and 50 server threads for `wrk -t16`, `-t24`, `-t32`, and `-t64` (0 socket errors, 0 non-2xx across all 80 runs). `EPython 0.1.0` leads on throughput, `p50`, and CPU/req in **all 20 / 20** configurations — peaking at **505,087 req/s** (`wrk -t24`, 50t; **+60.2%** over CPython 3.13.6t FT, **52.1×** CPython GIL, **69.5×** RustPython) and **491,233 req/s** (`wrk -t64`, 50t; **+67.3%** over CPython 3.13.6t FT with **9.9×** lower `p99`: `70.60ms` vs `696.03ms`).
 
-#### `wrk -t16 -c10000 -d30s`
+<table>
+<tr>
+<td>
 
 ```mermaid
 ---
 config:
   xyChart:
-    titleFontSize: 14
+    width: 400
+    height: 260
+    titleFontSize: 13
   themeVariables:
     xyChart:
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
 ---
 xychart-beta
-    title "POST /items (wrk -t16) — Throughput (Req/s)"
+    title "wrk -t16 — Throughput (Req/s)"
     x-axis "Server Threads" ["10", "20", "30", "40", "50"]
     y-axis "Req/s" 0 --> 460000
     line [183293, 327172, 427601, 432361, 409928]
@@ -76,6 +80,85 @@ xychart-beta
     line [9909, 9726, 9712, 9656, 9682]
     line [31548, 15829, 8500, 7597, 7101]
 ```
+
+</td>
+<td>
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 400
+    height: 260
+    titleFontSize: 13
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+---
+xychart-beta
+    title "wrk -t24 — Throughput (Req/s)"
+    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 520000
+    line [194391, 331119, 421401, 477779, 505087]
+    line [168933, 265390, 352548, 355248, 315231]
+    line [10398, 9926, 9699, 9749, 9694]
+    line [31543, 15186, 8727, 7794, 7272]
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 400
+    height: 260
+    titleFontSize: 13
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+---
+xychart-beta
+    title "wrk -t32 — Throughput (Req/s)"
+    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 480000
+    line [184046, 321100, 431185, 430525, 453398]
+    line [164565, 266210, 350290, 374877, 307368]
+    line [10449, 9926, 9869, 9755, 9731]
+    line [31577, 15961, 8610, 7934, 7433]
+```
+
+</td>
+<td>
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 400
+    height: 260
+    titleFontSize: 13
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
+---
+xychart-beta
+    title "wrk -t64 — Throughput (Req/s)"
+    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
+    y-axis "Req/s" 0 --> 520000
+    line [177588, 318483, 431137, 491831, 491233]
+    line [157480, 253820, 349458, 391047, 293681]
+    line [10479, 9984, 10000, 9785, 9909]
+    line [31792, 15965, 8753, 7760, 7422]
+```
+
+</td>
+</tr>
+</table>
+
 Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
@@ -128,28 +211,6 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 
 </details>
 
-#### `wrk -t24 -c10000 -d30s`
-
-```mermaid
----
-config:
-  xyChart:
-    titleFontSize: 14
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
----
-xychart-beta
-    title "POST /items (wrk -t24) — Throughput (Req/s)"
-    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 520000
-    line [194391, 331119, 421401, 477779, 505087]
-    line [168933, 265390, 352548, 355248, 315231]
-    line [10398, 9926, 9699, 9749, 9694]
-    line [31543, 15186, 8727, 7794, 7272]
-```
-Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
-
 <details>
 <summary><strong>View detailed numbers — wrk -t24 (10, 20, 30, 40, 50 server threads)</strong></summary>
 
@@ -200,28 +261,6 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 
 </details>
 
-#### `wrk -t32 -c10000 -d30s`
-
-```mermaid
----
-config:
-  xyChart:
-    titleFontSize: 14
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
----
-xychart-beta
-    title "POST /items (wrk -t32) — Throughput (Req/s)"
-    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 480000
-    line [184046, 321100, 431185, 430525, 453398]
-    line [164565, 266210, 350290, 374877, 307368]
-    line [10449, 9926, 9869, 9755, 9731]
-    line [31577, 15961, 8610, 7934, 7433]
-```
-Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
-
 <details>
 <summary><strong>View detailed numbers — wrk -t32 (10, 20, 30, 40, 50 server threads)</strong></summary>
 
@@ -271,28 +310,6 @@ Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPytho
 | RustPython 0.6.0 | 7,433 | 1.31s | 1.32s | 1.54s | 2.89s | 673.74 / 842.41 / 1,516.15 µs |
 
 </details>
-
-#### `wrk -t64 -c10000 -d30s`
-
-```mermaid
----
-config:
-  xyChart:
-    titleFontSize: 14
-  themeVariables:
-    xyChart:
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
----
-xychart-beta
-    title "POST /items (wrk -t64) — Throughput (Req/s)"
-    x-axis "Server Threads" ["10", "20", "30", "40", "50"]
-    y-axis "Req/s" 0 --> 520000
-    line [177588, 318483, 431137, 491831, 491233]
-    line [157480, 253820, 349458, 391047, 293681]
-    line [10479, 9984, 10000, 9785, 9909]
-    line [31792, 15965, 8753, 7760, 7422]
-```
-Legend: 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
 <summary><strong>View detailed numbers — wrk -t64 (10, 20, 30, 40, 50 server threads)</strong></summary>
