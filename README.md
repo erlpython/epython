@@ -49,32 +49,32 @@ Strictly sequential 30s runs across `10`, `20`, `30`, `40`, and `50` server thre
 
 <table>
 <tr>
-<td>
+<td width="440">
 
 ```mermaid
 ---
 config:
   xyChart:
-    width: 640
-    height: 340
-    titleFontSize: 22
+    width: 720
+    height: 440
+    titleFontSize: 26
     titlePadding: 14
     xAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
     yAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t16 — Throughput (Req/s)"
@@ -87,32 +87,32 @@ xychart-beta
 ```
 
 </td>
-<td>
+<td width="440">
 
 ```mermaid
 ---
 config:
   xyChart:
-    width: 640
-    height: 340
-    titleFontSize: 22
+    width: 720
+    height: 440
+    titleFontSize: 26
     titlePadding: 14
     xAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
     yAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t24 — Throughput (Req/s)"
@@ -127,32 +127,32 @@ xychart-beta
 </td>
 </tr>
 <tr>
-<td>
+<td width="440">
 
 ```mermaid
 ---
 config:
   xyChart:
-    width: 640
-    height: 340
-    titleFontSize: 22
+    width: 720
+    height: 440
+    titleFontSize: 26
     titlePadding: 14
     xAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
     yAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t32 — Throughput (Req/s)"
@@ -165,32 +165,32 @@ xychart-beta
 ```
 
 </td>
-<td>
+<td width="440">
 
 ```mermaid
 ---
 config:
   xyChart:
-    width: 640
-    height: 340
-    titleFontSize: 22
+    width: 720
+    height: 440
+    titleFontSize: 26
     titlePadding: 14
     xAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
     yAxis:
-      labelFontSize: 19
+      labelFontSize: 22
       labelPadding: 8
-      titleFontSize: 20
+      titleFontSize: 23
       titlePadding: 10
   themeVariables:
     xyChart:
       backgroundColor: "transparent"
       plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
   themeCSS: |
-    .main { transform: translate(6px, 24px) scale(0.68); transform-origin: 0 0; }
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
 ---
 xychart-beta
     title "wrk -t64 — Throughput (Req/s)"
