@@ -1,60 +1,18 @@
-# C10K Multithreaded I/O Benchmark
+# EPython
 
-**EPython — a GIL-free Python interpreter that shines on multithreaded I/O workloads.** Powered by Erlang/OTP's BEAM VM, `EPython` runs Python `threading.Thread` workers concurrently across CPU cores with preemptive scheduling and predictable tail latency — no Global Interpreter Lock, no `multiprocessing` workarounds.
+**A GIL-free Python interpreter powered by Erlang/OTP's BEAM VM — built to shine on multithreaded I/O workloads.** `EPython` runs Python `threading.Thread` workers concurrently across CPU cores with preemptive scheduling, sharing in-memory Python state across threads without a Global Interpreter Lock or multi-process workers.
 
-> **Trade-off:** `EPython` is slower than CPython on single-threaded, sequential, or single-loop `asyncio` workloads. Its strength is concurrent multithreaded Python (`threading.Thread` mixing I/O, Python compute, and shared state across many cores).
+> **Status:** This project is under active development.
+>
+> **Trade-off:** `EPython` is slower than CPython on single-threaded, compute-heavy, sequential, or single-loop `asyncio` workloads. Its strength is concurrent multithreaded I/O (`threading.Thread` handling high-concurrency I/O with shared state across many cores).
 
-[`threaded_server.py`](threaded_server.py): multi-threaded `threading.Thread` + `selectors` (`EpollSelector` / `KqueueSelector`) + `SO_REUSEPORT` non-blocking HTTP server on `127.0.0.1:8000` driven by [`post.lua`](post.lua) (`POST /items` JSON payloads). Each request parses HTTP headers and JSON, computes a pure-Python FNV-1a hash (CPU-bound Python bytecode execution), updates a 64-shard shared-memory in-memory store (`SHARDS = [({}, threading.Lock()) for _ in range(64)]`, capped at 200 items per shard), and returns a JSON response.
+## C10K Multithreaded I/O Benchmark
 
-## Setup
+[`threaded_server.py`](threaded_server.py) — multithreaded `threading.Thread` + `selectors` (`EpollSelector` / `KqueueSelector`) + `SO_REUSEPORT` non-blocking HTTP server driven by [`post.lua`](post.lua) (`POST /items`). Each request parses HTTP headers and JSON, computes a pure-Python FNV-1a hash, updates a 64-shard shared-memory dict (`SHARDS`, 200 items/shard with `threading.Lock`), and returns JSON.
 
-macOS:
+### Results
 
-```sh
-brew install wrk
-sudo sysctl -w kern.ipc.somaxconn=16384
-```
-
-Linux:
-
-```sh
-sudo apt install wrk
-sudo sysctl -w fs.file-max=2000000 net.core.somaxconn=65535 net.ipv4.tcp_max_syn_backlog=65535
-sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535" net.ipv4.tcp_tw_reuse=1
-sudo sysctl -w kernel.threads-max=4194304 kernel.pid_max=4194304 vm.max_map_count=1048576
-```
-
-## Run
-
-```sh
-# terminal 1 (arguments: [port=8000] [num_threads=cpu_count])
-ulimit -n 65536 && epython threaded_server.py 8000 50
-
-# terminal 2
-ulimit -n 65536 && wrk -t16 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
-```
-
-No `Socket errors:` line means all 10,000 connections completed cleanly with 0 errors.
-
-## Results
-
-Strictly sequential 30s runs (`wrk -t16 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items`) across **10, 20, 30, 40, and 50 server threads** (0 socket errors, 0 non-2xx responses across all 20 runs):
-
-- **Fastest at every thread count tested (10–50 threads)**: `EPython 0.1.0` beats `CPython 3.13.6t (FT)` on throughput, median latency (`p50`), and CPU efficiency (`µs/req`) at all five thread counts — peaking at **`432,361 req/s`** at 40 threads (**`44.8×`** `CPython 3.13.18 (GIL)` and **`56.9×`** `RustPython 0.6.0`), and leading `CPython 3.13.6t (FT)` by **`+19.0%`** at 30 threads (`427,601` vs `359,254 req/s`) and **`+19.6%`** at 50 threads (`409,928` vs `342,737 req/s`).
-- **Flat per-request CPU cost across cores**: `EPython 0.1.0` stays nearly flat from 10 → 50 threads (`51.17` → `57.99 µs/req`, using only `24.3` cores to saturate `wrk -t16` at `432k req/s`), whereas `CPython 3.13.6t (FT)` rises from `58.36` → `92.85 µs/req` (`38.8` cores at 40 threads) and degrades to `p99 = 779.68ms` / `max = 1.16s` at 50 threads (`EPython 0.1.0`: `p50 = 12.09ms`, `p99 = 403.49ms`, `max = 537.23ms`).
-
-### Machine
-
-| Spec | Value |
-|---|---|
-| **CPU** | AMD EPYC 7B13 (1 socket, 32 cores / 64 threads, x86_64) |
-| **Cache** | 1 MiB L1d, 1 MiB L1i, 16 MiB L2, 128 MiB L3 |
-| **Memory** | 117 GiB RAM |
-| **OS / Kernel** | Debian GNU/Linux, Linux 7.1.6 (`x86_64`, `SMP PREEMPT_DYNAMIC`) |
-| **Runtimes** | `EPython 0.1.0` (Erlang/OTP 29, ERTS 17.0.4), `CPython 3.13.18`, `CPython 3.13.6t` (free-threaded), `RustPython 0.6.0` (`rustc 1.100.0`) |
-| **Kernel TCP** | `somaxconn=4096`, `tcp_max_syn_backlog=4096`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1` |
-
-### `POST /items` (JSON + pure-Python FNV-1a hash + 64-shard shared state)
+Strictly sequential 30s runs (`wrk -t16 -c10000 -d30s`, 0 socket errors, 0 non-2xx across all 20 runs). `EPython 0.1.0` leads on throughput, `p50`, and CPU/req across all 5 thread counts — peaking at **432,361 req/s** (**44.8×** CPython GIL, **56.9×** RustPython, up to **+19.6%** over CPython 3.13t FT) with flat CPU cost (`51.2 → 58.0 µs/req` vs CPython FT's `58.4 → 92.9 µs/req`).
 
 ```mermaid
 ---
@@ -159,3 +117,47 @@ Legend: 🟧 **EPython 0.1.0** · 🟩 **CPython 3.13.6t (FT)** · 🟦 **CPytho
 | **RustPython 0.6.0** | 7,101 | 1.37s | 1.37s | 1.61s | 2.89s | 679.88 / 886.66 / 1,566.54 µs |
 
 </details>
+
+<details>
+<summary><strong>Test machine &amp; runtimes</strong></summary>
+
+| Spec | Value |
+|---|---|
+| **CPU** | AMD EPYC 7B13 (1 socket, 32 cores / 64 threads, x86_64) |
+| **Cache** | 1 MiB L1d, 1 MiB L1i, 16 MiB L2, 128 MiB L3 |
+| **Memory** | 117 GiB RAM |
+| **OS / Kernel** | Debian GNU/Linux, Linux 7.1.6 (`x86_64`, `SMP PREEMPT_DYNAMIC`) |
+| **Runtimes** | `EPython 0.1.0` (Erlang/OTP 29, ERTS 17.0.4), `CPython 3.13.18`, `CPython 3.13.6t` (free-threaded), `RustPython 0.6.0` (`rustc 1.100.0`) |
+| **Kernel TCP** | `somaxconn=4096`, `tcp_max_syn_backlog=4096`, `ip_local_port_range=1024 65535`, `tcp_tw_reuse=1` |
+
+</details>
+
+### Setup
+
+macOS:
+
+```sh
+brew install wrk
+sudo sysctl -w kern.ipc.somaxconn=16384
+```
+
+Linux:
+
+```sh
+sudo apt install wrk
+sudo sysctl -w fs.file-max=2000000 net.core.somaxconn=65535 net.ipv4.tcp_max_syn_backlog=65535
+sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535" net.ipv4.tcp_tw_reuse=1
+sudo sysctl -w kernel.threads-max=4194304 kernel.pid_max=4194304 vm.max_map_count=1048576
+```
+
+### Run
+
+```sh
+# terminal 1 (arguments: [port=8000] [num_threads=cpu_count])
+ulimit -n 65536 && epython threaded_server.py 8000 50
+
+# terminal 2
+ulimit -n 65536 && wrk -t16 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
+```
+
+No `Socket errors:` line means all 10,000 connections completed cleanly with 0 errors.
