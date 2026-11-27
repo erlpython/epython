@@ -328,7 +328,7 @@ No `Socket errors:` line means all 10,000 connections completed cleanly with 0 e
 
 | Spec | Value |
 |---|---|
-| **CPU** | AMD EPYC 7B13 (1 socket, 32 cores / 64 threads, x86_64) |
+| **CPU** | AMD EPYC 7B13 (64 vCPUs — 32 cores / 64 threads, x86_64) |
 | **Cache** | 1 MiB L1d, 1 MiB L1i, 16 MiB L2, 128 MiB L3 |
 | **Memory** | 117 GiB RAM |
 | **OS / Kernel** | Debian GNU/Linux, Linux 7.1.6 (`x86_64`, `SMP PREEMPT_DYNAMIC`) |
