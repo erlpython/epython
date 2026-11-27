@@ -46,7 +46,7 @@ epython -m pip list
 ### Requirements
 
 - **Linux:** glibc 2.38 or newer (for example Ubuntu 24.04+, Debian 13+, Fedora 39+). musl distributions (Alpine) aren't supported.
-- **macOS:** Apple Silicon builds need macOS 26 or newer; Intel builds need macOS 13 or newer. A binary downloaded with a browser may be blocked by Gatekeeper: run `xattr -d com.apple.quarantine epython` once (files fetched with `curl` aren't affected).
+- **macOS:** 13 (Ventura) or newer, on Apple Silicon or Intel. A binary downloaded with a browser may be blocked by Gatekeeper: run `xattr -d com.apple.quarantine epython` once (files fetched with `curl` aren't affected).
 
 ## C10K Multithreaded I/O Benchmark
 
