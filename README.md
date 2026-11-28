@@ -1,6 +1,6 @@
 # EPython
 
-**A GIL-free Python 3.13 interpreter on Erlang/OTP's BEAM VM — built to be the de facto Python runtime for high-concurrency network servers.**
+**A GIL-free Python 3.13 interpreter on Erlang/OTP's BEAM VM — built to become the de facto Python runtime for high-concurrency network servers.**
 
 `EPython` scales unmodified Python `threading.Thread`, `multiprocessing.Process`, and `asyncio` network code across CPU cores with preemptive BEAM scheduling and zero GIL — shipped as a single self-contained binary with `pip` built in.
 
@@ -9,9 +9,9 @@
 
 | Best fit | Not a fit |
 |---|---|
-| High-concurrency HTTP & socket servers (`selectors`, `threading`, `multiprocessing`) | Single-threaded CLI scripts and sequential batch jobs |
-| JSON APIs, serialization, and concurrent streaming (`asyncio` / async generators) | CPU-bound pure-Python compute (OOP frameworks, numeric, parsing loops) |
-| Multi-core network services sharing in-memory state across threads | Drop-in speedups for general-purpose CPython scripts |
+| High-concurrency HTTP & WSGI servers (`Django`, `Waitress`, `selectors`, `threading`, `multiprocessing`) | Single-threaded CLI scripts and sequential batch jobs |
+| JSON APIs, serialization, and concurrent streaming (`asyncio` / async generators) | Single-threaded CPU-bound numeric or parsing loops |
+| Multi-core Python services sharing in-memory state across 16–64+ threads | Drop-in speedups for single-threaded CPython scripts |
 
 ---
 
@@ -29,6 +29,218 @@ chmod +x "$F" && mv "$F" ~/.local/bin/epython
 epython script.py                      # run a script
 epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 ```
+
+---
+
+## Django Benchmark
+
+Unmodified [`django_server.py`](django_server.py) (`Django 6.1.3`) served head-to-head against **`CPython 3.13.6t` (free-threaded)** on a single process with no `os.fork()` (see [Test Machine](#test-machine)).
+
+- **Stock Waitress `SO_REUSEPORT`** ([`django_waitress_server.py`](django_waitress_server.py) using stock `waitress.create_server`, `wrk -t8 -c200 -d10s --latency`, **0 errors** across all 10 EPython runs): `EPython 0.1.0` wins `/template/` in **all 5 / 5** configs (**1.35×–8.90× faster**, peaking at **2,320 req/s** at `16×1` while CPython FT drops to `200 req/s` with 81 timeouts at `64×1`) and overtakes CPython FT on `/json/` at `32×1` (**9,203 vs. 8,932** with **6.2× lower `p99`**), peaking at **10,528 req/s** at `48×1` (**12.1× faster**) and **9,679 req/s** at `64×1` (**14.2× faster**).
+- **Pure multi-thread Django scaling** (`1t`–`64t` calling `django_server.application` directly across `threading.Thread` workers): `EPython 0.1.0` scales **20.4×** on `/json/` (`2,033 → 41,412 req/s`), beating CPython FT by **1.98× at `32t`** (**36,969 vs. 18,656**), **26.3× at `48t`** (**41,277 vs. 1,569**), and **29.2× at `64t`** (**41,412 vs. 1,418**), and wins `/template/` by **1.60×–1.90×** from `16t` through `64t`.
+
+<table>
+<tr>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "Django /json/ — Pure Multi-Thread (Req/s)"
+    x-axis "Threads" ["1", "4", "16", "32", "48", "64"]
+    y-axis "Req/s" 0 --> 45000
+    line [2033, 8791, 28894, 36969, 41277, 41412]
+    line [7152, 15997, 35063, 18656, 1569, 1418]
+```
+
+</td>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "Django /template/ — Pure Multi-Thread (Req/s)"
+    x-axis "Threads" ["1", "4", "16", "32", "48", "64"]
+    y-axis "Req/s" 0 --> 2800
+    line [323, 1140, 2460, 2152, 2238, 1962]
+    line [1249, 2075, 1542, 1256, 1181, 1147]
+```
+
+</td>
+</tr>
+<tr>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "Waitress SO_REUSEPORT /json/ (Req/s)"
+    x-axis "Loops × Workers" ["4x4", "16x1", "32x1", "48x1", "64x1"]
+    y-axis "Req/s" 0 --> 16000
+    line [9106, 9488, 9203, 10528, 9679]
+    line [14338, 11895, 8932, 871, 683]
+```
+
+</td>
+<td width="440">
+
+```mermaid
+---
+config:
+  xyChart:
+    width: 720
+    height: 440
+    titleFontSize: 26
+    titlePadding: 14
+    xAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+    yAxis:
+      labelFontSize: 22
+      labelPadding: 8
+      titleFontSize: 23
+      titlePadding: 10
+  themeVariables:
+    xyChart:
+      backgroundColor: "transparent"
+      plotColorPalette: "#A90533, #3776AB"
+  themeCSS: |
+    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
+---
+xychart-beta
+    title "Waitress SO_REUSEPORT /template/ (Req/s)"
+    x-axis "Loops × Workers" ["4x4", "16x1", "32x1", "48x1", "64x1"]
+    y-axis "Req/s" 0 --> 2600
+    line [2228, 2320, 1878, 1868, 1779]
+    line [1656, 1674, 1303, 1157, 200]
+```
+
+</td>
+</tr>
+</table>
+
+**Legend:** 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)**
+
+<details>
+<summary><strong>View Django numbers &amp; reproduce commands</strong></summary>
+
+#### Stock Waitress `SO_REUSEPORT` (`django_waitress_server.py`, `wrk -t8 -c200 -d10s --latency`)
+
+| Config (`loops × workers`) | Endpoint | **EPython 0.1.0** (`p50` / `p99`, errors) | CPython 3.13.6t FT (`p50` / `p99`, errors) | EPython vs. FT |
+|---|---|--:|--:|--:|
+| `4×4` | `/template/` | **2,228 req/s** (`86.9ms` / `129.6ms`, `0`) | 1,656 req/s (`117.8ms` / `159.6ms`, `0`) | **1.35× faster** |
+| `16×1` | `/template/` | **2,320 req/s** (`83.0ms` / `141.9ms`, `0`) | 1,674 req/s (`118.9ms` / `206.3ms`, `0`) | **1.39× faster** |
+| `32×1` | `/template/` | **1,878 req/s** (`103.4ms` / `201.5ms`, `0`) | 1,303 req/s (`138.3ms` / `277.3ms`, `0`) | **1.44× faster** |
+| `48×1` | `/template/` | **1,868 req/s** (`102.1ms` / `283.6ms`, `0`) | 1,157 req/s (`168.1ms` / `688.6ms`, `0`) | **1.61× faster** |
+| `64×1` | `/template/` | **1,779 req/s** (`107.8ms` / `248.8ms`, `0`) | 200 req/s (`863.0ms` / `1.80s`, `81 timeouts`) | **8.90× faster** |
+| `4×4` | `/json/` | 9,106 req/s (`20.4ms` / `92.0ms`, `0`) | **14,338 req/s** (`13.1ms` / `33.3ms`, `0`) | 0.64× |
+| `16×1` | `/json/` | 9,488 req/s (`20.0ms` / `45.2ms`, `0`) | **11,895 req/s** (`16.2ms` / `34.6ms`, `0`) | 0.80× |
+| `32×1` | `/json/` | **9,203 req/s** (`20.9ms` / `53.8ms`, `0`) | 8,932 req/s (`19.9ms` / `334.7ms`, `0`) | **1.03× (6.2× p99)** |
+| `48×1` | `/json/` | **10,528 req/s** (`19.2ms` / `64.7ms`, `0`) | 871 req/s (`235.9ms` / `919.3ms`, `0`) | **12.1× faster** |
+| `64×1` | `/json/` | **9,679 req/s** (`19.3ms` / `83.4ms`, `0`) | 683 req/s (`260.6ms` / `696.2ms`, `0`) | **14.2× faster** |
+
+#### Pure Multi-Thread Django 6.1.3 Scaling (`1t`–`64t`, direct WSGI calls)
+
+| Endpoint | Threads | **EPython 0.1.0** | CPython 3.13.6t FT | EPython vs. FT |
+|---|--:|--:|--:|--:|
+| `/json/` | `1t` | 2,033 req/s | **7,152 req/s** | 0.28× |
+| `/json/` | `4t` | 8,791 req/s | **15,997 req/s** | 0.55× |
+| `/json/` | `16t` | 28,894 req/s | **35,063 req/s** | 0.82× |
+| `/json/` | `32t` | **36,969 req/s** | 18,656 req/s | **1.98× faster** |
+| `/json/` | `48t` | **41,277 req/s** | 1,569 req/s | **26.3× faster** |
+| `/json/` | `64t` | **41,412 req/s** | 1,418 req/s | **29.2× faster** |
+| `/template/` | `1t` | 323 req/s | **1,249 req/s** | 0.26× |
+| `/template/` | `4t` | 1,140 req/s | **2,075 req/s** | 0.55× |
+| `/template/` | `16t` | **2,460 req/s** | 1,542 req/s | **1.60× faster** |
+| `/template/` | `32t` | **2,152 req/s** | 1,256 req/s | **1.71× faster** |
+| `/template/` | `48t` | **2,238 req/s** | 1,181 req/s | **1.90× faster** |
+| `/template/` | `64t` | **1,962 req/s** | 1,147 req/s | **1.71× faster** |
+
+#### Reproduce
+
+```sh
+epython -m pip install django waitress
+
+# Stock Waitress SO_REUSEPORT ([port=8000] [loops=16] [threads_per_loop=1])
+epython django_waitress_server.py 8000 16 1
+python3.13t django_waitress_server.py 8000 16 1
+
+# Warmup & measure (/template/ or /json/)
+wrk -t4 -c100 -d3s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d10s --latency http://127.0.0.1:8000/json/
+```
+
+</details>
 
 ---
 
@@ -833,132 +1045,6 @@ ulimit -n 65536 && epython multiprocess_server.py 8000 50
 # terminal 2 — load generator (no "Socket errors:" line = 0 errors across all 10k connections)
 ulimit -n 65536 && wrk -t32 -c10000 -d30s --timeout 5s --latency -s post.lua http://127.0.0.1:8000/items
 ```
-
----
-
-## Django Benchmark
-
-[`django_server.py`](django_server.py) (`Django 6.1.3`, `wrk -t8 -c200 -d30s --latency` over loopback; see [Test Machine](#test-machine)). All four interpreters ran on `waitress 3.0.2` (`1w × 16t`, no `os.fork()`), with CPython `gunicorn 27.0.1` (`1w × 16t` and `16w` prefork) as reference baselines.
-
-Django's template/middleware layer is CPU-bound pure-Python OOP rather than network I/O: CPython `gunicorn 16w` prefork leads (`15,480` `/template/`, `31,933` `/json/`), and CPython FT leads `1w × 16t` (`1,461` / `9,814`). On `/json/`, `EPython` reaches **2,495 req/s** with `0` errors (ahead of threaded CPython GIL `2,141` / `1,527`); on `/template/` it reaches **277 req/s**.
-
-<table>
-<tr>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "Django /template/ — Waitress 16t (Req/s)"
-    x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
-    y-axis "Req/s" 0 --> 1800
-    bar [277, 1461, 517, 322]
-```
-
-</td>
-<td width="440">
-
-```mermaid
----
-config:
-  xyChart:
-    width: 720
-    height: 440
-    titleFontSize: 26
-    titlePadding: 14
-    xAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-    yAxis:
-      labelFontSize: 22
-      labelPadding: 8
-      titleFontSize: 23
-      titlePadding: 10
-  themeVariables:
-    xyChart:
-      backgroundColor: "transparent"
-      plotColorPalette: "#A90533, #3776AB, #EAB308, #F74C00"
-  themeCSS: |
-    .main { transform: translate(4px, 10px) scale(0.71); transform-origin: 0 0; }
----
-xychart-beta
-    title "Django /json/ — Waitress 16t (Req/s)"
-    x-axis "Interpreter" ["EPython", "CPy FT", "CPy GIL", "RustPy"]
-    y-axis "Req/s" 0 --> 11000
-    bar [2495, 9814, 2141, 2614]
-```
-
-</td>
-</tr>
-</table>
-
-<details>
-<summary><strong>View Django numbers &amp; reproduce commands</strong></summary>
-
-#### `GET /template/` (`wrk -t8 -c200 -d30s --latency`)
-
-| Runtime / Server | Req/s | Avg | p50 | p99 | Steady CPU/req (`cores`) | Memory (`PSS` / `RSS`) | Errors |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.18 GIL (gunicorn 16w prefork) | 15,480.1 | 12.85ms | 12.30ms | 28.29ms | 1,013.5 µs (`15.7c`) | 401 / 663 MiB (17p) | 0 |
-| CPython 3.13.6t FT (gunicorn 1w x 16t) | 1,542.0 | 129.41ms | 126.42ms | 169.05ms | 4,355.5 µs (`6.7c`) | 142 / 165 MiB (2p) | 0 |
-| CPython 3.13.6t FT (waitress 1w x 16t) | 1,461.3 | 66.93ms | 65.44ms | 91.26ms | 4,197.3 µs (`6.1c`) | 117 / 120 MiB (1p) | 0 |
-| CPython 3.13.18 GIL (gunicorn 1w x 16t) | 781.1 | 226.00ms | 244.00ms | 294.70ms | 1,478.6 µs (`1.2c`) | 47 / 68 MiB (2p) | 122 timeouts |
-| CPython 3.13.18 GIL (waitress 1w x 16t) | 517.1 | 184.72ms | 98.73ms | 521.20ms | 2,123.4 µs (`1.1c`) | 35 / 42 MiB (1p) | 27 timeouts |
-| RustPython 0.6.0 (waitress 1w x 16t) | 322.0 | 302.66ms | 301.47ms | 341.95ms | 14,700.5 µs (`4.7c`) | 197 / 200 MiB (1p) | 0 |
-| **EPython 0.1.0 (waitress 1w x 16t)** | **277.4** | **350.80ms** | **349.71ms** | **427.03ms** | **24,942.4 µs** (`6.9c`) | 941 / 988 MiB (4p) | 0 |
-
-#### `GET /json/` (`wrk -t8 -c200 -d30s --latency`)
-
-| Runtime / Server | Req/s | Avg | p50 | p99 | Steady CPU/req (`cores`) | Memory (`PSS` / `RSS`) | Errors |
-|---|--:|--:|--:|--:|--:|--:|--:|
-| CPython 3.13.18 GIL (gunicorn 16w prefork) | 31,933.2 | 6.16ms | 5.89ms | 16.00ms | 467.1 µs (`14.9c`) | 402 / 663 MiB (17p) | 0 |
-| CPython 3.13.6t FT (waitress 1w x 16t) | 9,814.4 | 10.23ms | 9.00ms | 23.09ms | 1,027.8 µs (`10.1c`) | 117 / 120 MiB (1p) | 0 |
-| CPython 3.13.6t FT (gunicorn 1w x 16t) | 7,708.2 | 28.35ms | 25.33ms | 55.14ms | 1,556.0 µs (`12.0c`) | 141 / 164 MiB (2p) | 0 |
-| RustPython 0.6.0 (waitress 1w x 16t) | 2,614.4 | 40.62ms | 34.25ms | 80.89ms | 3,371.0 µs (`8.8c`) | 163 / 165 MiB (1p) | 0 |
-| **EPython 0.1.0 (waitress 1w x 16t)** | **2,495.0** | **43.09ms** | **35.63ms** | **129.01ms** | **3,396.0 µs** (`8.5c`) | 2,175 / 2,223 MiB (4p) | 0 |
-| CPython 3.13.18 GIL (waitress 1w x 16t) | 2,141.2 | 48.55ms | 40.83ms | 96.02ms | 550.7 µs (`1.2c`) | 35 / 42 MiB (1p) | 0 |
-| CPython 3.13.18 GIL (gunicorn 1w x 16t) | 1,527.0 | 129.03ms | 128.20ms | 222.85ms | 825.5 µs (`1.3c`) | 47 / 68 MiB (2p) | 89 timeouts |
-
-#### Reproduce
-
-```sh
-epython -m pip install django waitress
-epython -m waitress --host=127.0.0.1 --port=8000 --threads=16 django_server:application
-
-# CPython Gunicorn baselines (1w x 16t gthread / 16w prefork)
-python3.13t -m gunicorn django_server:application --workers 1 --threads 16 --worker-class gthread --bind 127.0.0.1:8000 --log-level warning
-python3 -m gunicorn django_server:application --workers 16 --bind 127.0.0.1:8000 --log-level warning
-
-# Warmup & measure (/template/ or /json/)
-wrk -t4 -c100 -d5s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d30s --latency http://127.0.0.1:8000/json/
-```
-
-</details>
 
 ---
 
