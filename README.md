@@ -247,6 +247,7 @@ epython -m pip install django waitress
 # Django + Waitress SO_REUSEPORT ([port=8000] [loops=16] [threads_per_loop=1])
 epython django_waitress_server.py 8000 16 1
 wrk -t4 -c100 -d3s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d10s --latency http://127.0.0.1:8000/json/
+wrk -t4 -c100 -d3s http://127.0.0.1:8000/template/ && wrk -t8 -c200 -d10s --latency http://127.0.0.1:8000/template/
 
 # Django Pure Multi-Thread Scaling ([duration_sec=1.5])
 epython django_mt_bench.py
