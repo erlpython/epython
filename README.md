@@ -37,7 +37,7 @@ epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 Unmodified [`django_server.py`](django_server.py) (`Django 6.1.3`) across all four runtimes in a single process with no `os.fork()` (see [Test Machine](#test-machine)).
 
 - **Django + Waitress `SO_REUSEPORT`** ([`django_waitress_server.py`](django_waitress_server.py), `wrk -t8 -c200 -d10s`, **0 errors**): `EPython` wins `/template/` in **5 / 5** configs (peaking at **2,320 req/s**; **8.9×** CPython FT at `64×1`) and leads `/json/` from `32×1` onward, peaking at **10,528 req/s** (**12.1×** CPython FT, **6.3×** CPython GIL, **20.3×** RustPython).
-- **Django Pure Multi-Thread** (`1t`–`64t` direct WSGI calls): `EPython` scales **20.4×** to **41,412 req/s** on `/json/` (**29.2×** CPython FT, **7.8×** CPython GIL, **32.9×** RustPython at `64t`) and wins `/template/` across `16t–64t` (**2,460 req/s** peak).
+- **Django Pure Multi-Thread** ([`django_mt_bench.py`](django_mt_bench.py), `1t`–`64t` direct WSGI calls): `EPython` scales **18.6×** to **38,837 req/s** on `/json/` (**1.58×–2.17×** CPython FT across `32t–64t`, **7.1×** CPython GIL, **28.5×** RustPython at `64t`) and wins `/template/` across `16t–64t` (**2,162 req/s** peak; **1.54×–1.82×** CPython FT).
 
 <table>
 <tr>
@@ -149,11 +149,11 @@ config:
 xychart-beta
     title "Django Pure Multi-Thread /json/ (Req/s)"
     x-axis "Threads" ["1", "4", "16", "32", "48", "64"]
-    y-axis "Req/s" 0 --> 45000
-    line [2033, 8791, 28894, 36969, 41277, 41412]
-    line [7152, 15997, 35063, 18656, 1569, 1418]
-    line [14976, 6936, 5271, 5046, 5141, 5289]
-    line [2994, 5386, 2858, 1345, 1274, 1257]
+    y-axis "Req/s" 0 --> 42000
+    line [2087, 9010, 28193, 38837, 37114, 35399]
+    line [7141, 16071, 33814, 24521, 22025, 16339]
+    line [14892, 6267, 6227, 5247, 5144, 5006]
+    line [3081, 6761, 2744, 1327, 1248, 1243]
 ```
 
 </td>
@@ -187,11 +187,11 @@ config:
 xychart-beta
     title "Django Pure Multi-Thread /template/ (Req/s)"
     x-axis "Threads" ["1", "4", "16", "32", "48", "64"]
-    y-axis "Req/s" 0 --> 2800
-    line [323, 1140, 2460, 2152, 2238, 1962]
-    line [1249, 2075, 1542, 1256, 1181, 1147]
-    line [1820, 1391, 408, 302, 291, 304]
-    line [266, 373, 349, 300, 289, 286]
+    y-axis "Req/s" 0 --> 2500
+    line [349, 1101, 2162, 1991, 1920, 2069]
+    line [1225, 1875, 1407, 1202, 1144, 1139]
+    line [1822, 435, 303, 291, 1298, 380]
+    line [275, 432, 358, 320, 304, 299]
 ```
 
 </td>
@@ -220,29 +220,9 @@ xychart-beta
 
 *(Timeout counts denoted with `t`, e.g. `81t` = 81 socket read timeouts during the 10s run.)*
 
-#### Django Pure Multi-Thread Scaling (`1t`–`64t`, direct WSGI calls)
-
-| Endpoint | Threads | **EPython 0.1.0** | CPython 3.13.6t FT | CPython 3.13.18 GIL | RustPython 0.6.0 | EPython vs. FT |
-|---|--:|--:|--:|--:|--:|--:|
-| `/json/` | `1t` | 2,033 req/s | 7,152 req/s | **14,976 req/s** | 2,994 req/s | 0.28× |
-| `/json/` | `4t` | 8,791 req/s | **15,997 req/s** | 6,936 req/s | 5,386 req/s | 0.55× |
-| `/json/` | `16t` | 28,894 req/s | **35,063 req/s** | 5,271 req/s | 2,858 req/s | 0.82× |
-| `/json/` | `32t` | **36,969 req/s** | 18,656 req/s | 5,046 req/s | 1,345 req/s | **1.98× faster** |
-| `/json/` | `48t` | **41,277 req/s** | 1,569 req/s | 5,141 req/s | 1,274 req/s | **26.3× faster** |
-| `/json/` | `64t` | **41,412 req/s** | 1,418 req/s | 5,289 req/s | 1,257 req/s | **29.2× faster** |
-| `/template/` | `1t` | 323 req/s | 1,249 req/s | **1,820 req/s** | 266 req/s | 0.26× |
-| `/template/` | `4t` | 1,140 req/s | **2,075 req/s** | 1,391 req/s | 373 req/s | 0.55× |
-| `/template/` | `16t` | **2,460 req/s** | 1,542 req/s | 408 req/s | 349 req/s | **1.60× faster** |
-| `/template/` | `32t` | **2,152 req/s** | 1,256 req/s | 302 req/s | 300 req/s | **1.71× faster** |
-| `/template/` | `48t` | **2,238 req/s** | 1,181 req/s | 291 req/s | 289 req/s | **1.90× faster** |
-| `/template/` | `64t` | **1,962 req/s** | 1,147 req/s | 304 req/s | 286 req/s | **1.71× faster** |
-
-#### Reproduce
-
 ```sh
+# Install dependencies & start Waitress SO_REUSEPORT ([port=8000] [loops=16] [threads_per_loop=1])
 epython -m pip install django waitress
-
-# Stock Waitress SO_REUSEPORT ([port=8000] [loops=16] [threads_per_loop=1])
 epython django_waitress_server.py 8000 16 1
 python3.13t django_waitress_server.py 8000 16 1
 python3.13 django_waitress_server.py 8000 16 1
@@ -250,6 +230,31 @@ rustpython django_waitress_server.py 8000 16 1
 
 # Warmup & measure (/template/ or /json/)
 wrk -t4 -c100 -d3s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d10s --latency http://127.0.0.1:8000/json/
+```
+
+#### Django Pure Multi-Thread Scaling (`django_mt_bench.py`, `1t`–`64t` direct WSGI calls)
+
+| Endpoint | Threads | **EPython 0.1.0** | CPython 3.13.6t FT | CPython 3.13.18 GIL | RustPython 0.6.0 | EPython vs. FT |
+|---|--:|--:|--:|--:|--:|--:|
+| `/json/` | `1t` | 2,087 req/s | 7,141 req/s | **14,892 req/s** | 3,081 req/s | 0.29× |
+| `/json/` | `4t` | 9,010 req/s | **16,071 req/s** | 6,267 req/s | 6,761 req/s | 0.56× |
+| `/json/` | `16t` | 28,193 req/s | **33,814 req/s** | 6,227 req/s | 2,744 req/s | 0.83× |
+| `/json/` | `32t` | **38,837 req/s** | 24,521 req/s | 5,247 req/s | 1,327 req/s | **1.58× faster** |
+| `/json/` | `48t` | **37,114 req/s** | 22,025 req/s | 5,144 req/s | 1,248 req/s | **1.69× faster** |
+| `/json/` | `64t` | **35,399 req/s** | 16,339 req/s | 5,006 req/s | 1,243 req/s | **2.17× faster** |
+| `/template/` | `1t` | 349 req/s | 1,225 req/s | **1,822 req/s** | 275 req/s | 0.28× |
+| `/template/` | `4t` | 1,101 req/s | **1,875 req/s** | 435 req/s | 432 req/s | 0.59× |
+| `/template/` | `16t` | **2,162 req/s** | 1,407 req/s | 303 req/s | 358 req/s | **1.54× faster** |
+| `/template/` | `32t` | **1,991 req/s** | 1,202 req/s | 291 req/s | 320 req/s | **1.66× faster** |
+| `/template/` | `48t` | **1,920 req/s** | 1,144 req/s | 1,298 req/s | 304 req/s | **1.68× faster** |
+| `/template/` | `64t` | **2,069 req/s** | 1,139 req/s | 380 req/s | 299 req/s | **1.82× faster** |
+
+```sh
+# Direct multi-thread Django WSGI scaling ([duration_sec=1.5])
+epython django_mt_bench.py
+python3.13t django_mt_bench.py
+python3.13 django_mt_bench.py
+rustpython django_mt_bench.py
 ```
 
 </details>
