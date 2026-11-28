@@ -201,7 +201,7 @@ xychart-beta
 **Legend:** 🟥 **EPython 0.1.0** · 🟦 **CPython 3.13.6t (FT)** · 🟨 **CPython 3.13.18 (GIL)** · 🟧 **RustPython 0.6.0**
 
 <details>
-<summary><strong>View Django numbers &amp; reproduce commands</strong></summary>
+<summary><strong>View detailed Django numbers</strong></summary>
 
 #### Django + Waitress `SO_REUSEPORT` (`django_waitress_server.py`, `wrk -t8 -c200 -d10s --latency`)
 
@@ -220,18 +220,6 @@ xychart-beta
 
 *(Timeout counts denoted with `t`, e.g. `81t` = 81 socket read timeouts during the 10s run.)*
 
-```sh
-# Install dependencies & start Waitress SO_REUSEPORT ([port=8000] [loops=16] [threads_per_loop=1])
-epython -m pip install django waitress
-epython django_waitress_server.py 8000 16 1
-python3.13t django_waitress_server.py 8000 16 1
-python3.13 django_waitress_server.py 8000 16 1
-rustpython django_waitress_server.py 8000 16 1
-
-# Warmup & measure (/template/ or /json/)
-wrk -t4 -c100 -d3s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d10s --latency http://127.0.0.1:8000/json/
-```
-
 #### Django Pure Multi-Thread Scaling (`django_mt_bench.py`, `1t`–`64t` direct WSGI calls)
 
 | Endpoint | Threads | **EPython 0.1.0** | CPython 3.13.6t FT | CPython 3.13.18 GIL | RustPython 0.6.0 | EPython vs. FT |
@@ -249,15 +237,20 @@ wrk -t4 -c100 -d3s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d10s --latency 
 | `/template/` | `48t` | **1,920 req/s** | 1,144 req/s | 1,298 req/s | 304 req/s | **1.68× faster** |
 | `/template/` | `64t` | **2,069 req/s** | 1,139 req/s | 380 req/s | 299 req/s | **1.82× faster** |
 
-```sh
-# Direct multi-thread Django WSGI scaling ([duration_sec=1.5])
-epython django_mt_bench.py
-python3.13t django_mt_bench.py
-python3.13 django_mt_bench.py
-rustpython django_mt_bench.py
-```
-
 </details>
+
+### Reproduce
+
+```sh
+epython -m pip install django waitress
+
+# Django + Waitress SO_REUSEPORT ([port=8000] [loops=16] [threads_per_loop=1])
+epython django_waitress_server.py 8000 16 1
+wrk -t4 -c100 -d3s http://127.0.0.1:8000/json/ && wrk -t8 -c200 -d10s --latency http://127.0.0.1:8000/json/
+
+# Django Pure Multi-Thread Scaling ([duration_sec=1.5])
+epython django_mt_bench.py
+```
 
 ---
 
