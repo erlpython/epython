@@ -34,10 +34,10 @@ epython -m pip install fastapi httpx   # install pure-Python & cp313/abi3 wheels
 
 ## Django Benchmark
 
-Unmodified [`django_server.py`](django_server.py) (`Django 6.1.3`) across all four runtimes in a single process with no `os.fork()` (see [Test Machine](#test-machine)):
+Unmodified [`django_server.py`](django_server.py) (`Django 6.1.3`) across all four runtimes in a single process with no `os.fork()` (see [Test Machine](#test-machine)).
 
-- **Django + Waitress `SO_REUSEPORT`** ([`django_waitress_server.py`](django_waitress_server.py) using stock `waitress.create_server`, `wrk -t8 -c200 -d10s --latency`, **0 errors** across all 10 EPython runs): `EPython 0.1.0` sweeps `/template/` in **all 5 / 5** configs (**2,320 req/s** at `16×1` — **1.39×** CPython FT, **2.79×** CPython GIL, **7.05×** RustPython; **8.90×** CPython FT at `64×1` where CPython FT drops to `200 req/s` with 81 timeouts). On `/json/`, `EPython` overtakes CPython FT at `32×1` (**9,203 vs. 8,932**, **6.2× lower `p99`**) and peaks at **10,528 req/s** at `48×1` (**12.1×** CPython FT, **6.29×** CPython GIL, **20.3×** RustPython) and **9,679 req/s** at `64×1` (**14.2×** CPython FT, **18.3×** RustPython).
-- **Django Pure Multi-Thread Scaling** (`1t`–`64t` calling `django_server.application` directly across `threading.Thread` workers): `EPython 0.1.0` scales **20.4×** on `/json/` (`2,033 → 41,412 req/s`), beating CPython FT by **1.98× at `32t`**, **26.3× at `48t`**, and **29.2× at `64t`** (and **7.8×** CPython GIL / **32.9×** RustPython at `64t`), and leads `/template/` from `16t` through `64t` (**2,460 req/s** at `16t` — **1.60×** CPython FT, **6.0×** CPython GIL, **7.1×** RustPython).
+- **Django + Waitress `SO_REUSEPORT`** ([`django_waitress_server.py`](django_waitress_server.py), `wrk -t8 -c200 -d10s`, **0 errors**): `EPython` wins `/template/` in **5 / 5** configs (peaking at **2,320 req/s**; **8.9×** CPython FT at `64×1`) and leads `/json/` from `32×1` onward, peaking at **10,528 req/s** (**12.1×** CPython FT, **6.3×** CPython GIL, **20.3×** RustPython).
+- **Django Pure Multi-Thread** (`1t`–`64t` direct WSGI calls): `EPython` scales **20.4×** to **41,412 req/s** on `/json/` (**29.2×** CPython FT, **7.8×** CPython GIL, **32.9×** RustPython at `64t`) and wins `/template/` across `16t–64t` (**2,460 req/s** peak).
 
 <table>
 <tr>
